@@ -51,7 +51,7 @@ All networking happens over **Tailscale** (WireGuard-based private mesh VPN). No
 - **Machine name:** keep `my-first-server` (tailnet name is already randomized: `porcupine-celsius.ts.net`). The server is shared with other hobby services (e.g., Vikunja), so the name is intentionally not RSS-specific.
 - **Multiple services on the host:** one **HTTPS port per service** via Serve (`:8443` → RSS API; a future Vikunja gets another port, e.g. `:9443`), not sub-paths. `:443` is unavailable to Serve while nginx needs `0.0.0.0:443`. Verified in stage 0: Serve accepts arbitrary HTTPS ports (443, 8443, 9443 tested), all with the same MagicDNS certificate. Each service in its own Compose project with its own Docker network and volumes; never mount the Docker socket into a container.
 - **Existing public service (accepted exception):** nginx on public `:80`/`:443` fronts the owner's MCP server (`mcp-server.service`, `127.0.0.1:8000`, domain `mcp.ministryofpa.ws`) for a claude.ai connector. Unrelated to this project; leave it running. nginx binds `0.0.0.0:443`, which includes the Tailscale IP, Verified in stage 0 that Serve on `:443` blocks nginx from starting (bind conflict), so the RSS API uses Serve `:8443`.
-- **Tailscale ACLs:** restrict which tailnet devices may reach `my-first-server` and on which ports (e.g., phone + main desktop only), so a compromised device elsewhere on the tailnet can't reach every service. Also block `my-first-server` from initiating connections to other tailnet devices (second layer behind the extraction SSRF guard).
+- **Tailscale ACLs: default allow-all, kept deliberately** (decided in stage 0). The owner controls which devices join the tailnet. Accepted consequence: the extraction SSRF guard is the only barrier between the server and other tailnet devices, so it must refuse the Tailscale ranges explicitly, both IPv4 `100.64.0.0/10` and IPv6 `fd7a:115c:a1e0::/48`. Revisit if a less trusted device joins.
 
 ### Repository
 
@@ -156,7 +156,7 @@ Rule: **item properties are captured at swipe time** (items are pruned, so anyth
   - **DB as queue:** `saved` rows carry `extraction_status` (pending / done / failed), `attempts`, `last_error`. A scheduler-container job runs **every minute** and processes pending rows.
   - **Retries:** up to 3 attempts with increasing backoff, then `failed`. The app shows "couldn't extract — open original" and falls back to Custom Tabs.
   - Known limitation: trafilatura can't reliably detect paywalls; a paywalled page may "succeed" with teaser text only.
-- **SSRF guard** (extraction fetches URLs from third-party feed content and client snapshots): allow only `http`/`https`; resolve DNS and refuse loopback, private, link-local, and Tailscale CGNAT (`100.64.0.0/10`) addresses, re-checking after every redirect; enforce a timeout and a max response size.
+- **SSRF guard** (extraction fetches URLs from third-party feed content and client snapshots): allow only `http`/`https`; resolve DNS and refuse loopback, private, link-local, and Tailscale (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) addresses, re-checking after every redirect; enforce a timeout and a max response size.
 
 ### Retention
 
@@ -218,7 +218,7 @@ Feed definitions themselves live in the feeds file, not the database.
 
 Each stage should be usable and testable before the next. Stages 0–4 are backend-only and testable with `curl` over the tailnet.
 
-0. **Server foundation:** Docker, Tailscale Serve, Tailscale ACLs, firewall verification (no public ports), automatic security updates, repo clone on the server.
+0. **Server foundation:** Docker, Tailscale Serve, firewall verification (no public ports), automatic security updates, repo clone on the server.
 Stages are **vertical slices**: each stage adds the tables it needs via a new Alembic migration, next to the code that uses them.
 
 1. **Ingest:** SQLite settings, Alembic baseline, `feed_status` / `items` / `tombstones` tables. Fetcher: feeds file → fetch (conditional GET) → parse → deduplicate (incl. tombstones) → store. Run by the scheduler container. Testable by running a fetch and inspecting the DB with `sqlite3`.

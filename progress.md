@@ -19,7 +19,7 @@
 
 ### Phase 0: Server foundation
 
-- **Status:** in_progress
+- **Status:** complete
 - Actions taken:
   - Repo initialized; `.gitignore`; public GitHub repo created.
   - Non-root server inventory over Tailscale SSH (see findings.md).
@@ -30,6 +30,8 @@
   - Server cloned repo anonymously over HTTPS into ~/swipe-rss-reader.
   - Serve tested on 443/8443/9443 against a temp container; kept only 443 → localhost:8001.
   - nginx failed to start (bind 0.0.0.0:443 in use by tailscaled) → moved Serve to 8443 → localhost:8001; 443 freed.
+  - User re-started nginx: starts cleanly alongside Serve :8443; stopped again.
+  - ACL: user keeps allow-all; plan updated (SSRF guard blocks Tailscale v4+v6 ranges).
 - Files created/modified:
   - `.gitignore`, `findings.md`, `task_plan.md`, `progress.md`
 
@@ -41,6 +43,7 @@
 | All feeds fetch/parse | httpx + feedparser | 200, bozo=False | all pass | pass |
 | Public ports (IPv4) | TCP connect from desktop | all filtered | 22/80/443/8000 filtered | pass |
 | Serve HTTPS from desktop | curl https://<host>:{443,8443,9443} | 200, valid cert | 200 ×3, LE cert valid to 2026-12-31 | pass |
+| nginx + Serve coexistence | nginx start with Serve on :8443 | starts | started (user-verified) | pass |
 | Docker loopback publish | nginx:alpine on 127.0.0.1:8001 | 200 on loopback only | 200, bound 127.0.0.1 | pass |
 
 ## Error Log
