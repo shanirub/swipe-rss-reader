@@ -48,6 +48,17 @@
 - Files created/modified:
   - `backend/**`, `compose.yaml`, `config/feeds.toml`, `PROJECT_PLAN.md`
 
+### Session wrap-up
+
+- **Status:** complete
+- Actions taken:
+  - Commented out mekomit in `config/feeds.toml` with a TODO (user decision).
+  - Recorded the user's workflow rule: all dev on the desktop, the server only pulls and runs (task_plan.md Decisions + Notes).
+  - Confirmed the server checkout has no local changes (`git status` clean) and the desktop has Docker + Compose for local container tests.
+  - Updated all three planning files for a fresh session.
+- Files created/modified:
+  - `config/feeds.toml`, `task_plan.md`, `findings.md`, `progress.md`
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -68,3 +79,14 @@
 | Timestamp | Error | Attempt | Resolution |
 |-----------|-------|---------|------------|
 | 2026-10-02 | nginx: bind() to 0.0.0.0:443 failed (98: Address already in use) | 1 | Serve holds 443 on the Tailscale IP; moved RSS to Serve :8443 |
+| 2026-10-02 | mekomit: 403 Forbidden (Cloudflare challenge) from server | 1 | Datacenter-IP block; feed commented out |
+
+## 5-Question Reboot Check
+
+| Question | Answer |
+|----------|--------|
+| Where am I? | Phases 0–1 complete; Phase 2 (stage 2, API) not started |
+| Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
+| What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
+| What have I learned? | See findings.md (current state, server inventory, stage 1 research) |
+| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min |

@@ -146,10 +146,11 @@ url = "https://www.wired.com/feed/tag/ai/latest/rss"
 
 # --- Hebrew ---
 
-[[feeds]]
-id = "mekomit"
-name = "שיחה מקומית"
-url = "https://www.mekomit.co.il/feed/"
+# TODO: blocked as of 2026-10-02 (Cloudflare challenge, 403, for the server's datacenter IP; works from home). Revisit.
+# [[feeds]]
+# id = "mekomit"
+# name = "שיחה מקומית"
+# url = "https://www.mekomit.co.il/feed/"
 
 [[feeds]]
 id = "ha-makom"
