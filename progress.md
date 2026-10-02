@@ -25,6 +25,7 @@
   - Non-root server inventory over Tailscale SSH (see findings.md).
   - Probed public IP from desktop: 22 filtered, 80/443 open (nginx), 8000 filtered.
   - User disabled mcp-server + nginx; re-probe: 22/80/443 all filtered.
+  - User installed Docker; verified as srub (version, hello-world, loopback publish on 8001).
 - Files created/modified:
   - `.gitignore`, `findings.md`, `task_plan.md`, `progress.md`
 
@@ -34,6 +35,8 @@
 |------|-------|----------|--------|--------|
 | feeds.toml loads | `tomllib.load` | valid, unique ids | 30 feeds, unique | pass |
 | All feeds fetch/parse | httpx + feedparser | 200, bozo=False | all pass | pass |
+| Public ports (IPv4) | TCP connect from desktop | all filtered | 22/80/443/8000 filtered | pass |
+| Docker loopback publish | nginx:alpine on 127.0.0.1:8001 | 200 on loopback only | 200, bound 127.0.0.1 | pass |
 
 ## Error Log
 

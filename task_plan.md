@@ -8,7 +8,7 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-User installs Docker (Ubuntu packages) + adds srub to docker group; Claude verifies.
+User: enable HTTPS certs in admin console, set srub as tailscale operator, disable ssh.socket; answer the deploy-key and ACL questions.
 
 ## Current Phase
 
@@ -25,7 +25,7 @@ Phase 0
 - [ ] Tailscale ACLs: only phone + desktop → `my-first-server`; server cannot initiate to other tailnet devices
 - [ ] Firewall verification: no public ports (scan from outside the tailnet)
 - [x] Automatic security updates (already enabled)
-- [ ] Install Docker + Compose
+- [x] Install Docker + Compose
 - [ ] Read-only deploy key for this repo; server clones it
 - **Status:** in_progress
 
@@ -81,6 +81,8 @@ Phase 0
 2. ~~Server access~~ → Claude via Tailscale SSH (non-root); user runs root commands and reports output.
 3. ~~Server state~~ → see findings.md inventory.
 4. ~~Commit planning files~~ → yes.
+6. Public repo → is a deploy key still needed, or clone anonymously over HTTPS?
+7. ACLs: current policy file? Which devices besides phone + desktop may reach the server?
 5. ~~nginx on public :80/:443~~ → MCP connector front, intentional; recorded in PROJECT_PLAN as an accepted exception. Open: does Serve on tailnet :443 coexist with nginx on 0.0.0.0:443?
 
 ## Decisions Made
