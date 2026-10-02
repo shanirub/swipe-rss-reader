@@ -85,12 +85,12 @@ All networking happens over **Tailscale** (WireGuard-based private mesh VPN). No
 
 ### Scheduling
 
-- **Dedicated scheduler container** (e.g., supercronic) runs the fetcher. This keeps scheduling inside Compose and isolates fetch failures from the API.
+- **Dedicated scheduler container** (supercronic) runs the fetcher **every 15 minutes** (`backend/crontab`). A one-shot **`migrate`** Compose service runs `alembic upgrade head` first; other services start only after it completes, so migrations never race. This keeps scheduling inside Compose and isolates fetch failures from the API.
 - The same container runs the **extraction job** every minute (see Content extraction) and, from stage 3, the pruning job.
 
 ### Feeds
 
-- Defined in **`feeds.toml`, committed to the repo**. Bind-mounted from the server's checkout into the fetcher container and re-read on every fetch run, so `git pull` applies edits without rebuild or restart.
+- Defined in **`config/feeds.toml`, committed to the repo**. The `config/` **directory** is bind-mounted read-only from the server's checkout into the containers and the file is re-read on every fetch run, so `git pull` applies edits without rebuild or restart. (A single-file bind mount would go stale: `git pull` replaces the file with a new inode.)
 - **TOML**, read with stdlib `tomllib`, validated with Pydantic.
 - Each feed has a **required, stable `id` slug** (never changes), plus `url` and optional `name`. The `id` (not the URL) keys `feed_status` and is the feed identifier stored in the swipe log, so a feed's URL can change without orphaning its history.
 - `[defaults]` table for global settings; per-feed overrides (e.g., `retention_hours`) live on the feed entry later.

@@ -1,0 +1,31 @@
+# Deploy: git pull && docker compose up -d --build
+
+x-backend: &backend
+  build: ./backend
+  image: swipe-rss-backend:latest
+  environment:
+    SWIPE_RSS_DB: /data/swipe_rss.db
+    SWIPE_RSS_FEEDS: /config/feeds.toml
+  volumes:
+    - data:/data
+    # Directory, not file: git pull replaces feeds.toml with a new inode, which a
+    # single-file bind mount would not see until the container restarts.
+    - ./config:/config:ro
+
+services:
+  # One-shot: applies migrations before anything else touches the database.
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  scheduler:
+    <<: *backend
+    command: ["supercronic", "/app/crontab"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  data:

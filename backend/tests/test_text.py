@@ -1,0 +1,18 @@
+from swipe_rss.text import html_to_text
+
+
+def test_strips_tags_and_unescapes():
+    assert html_to_text("<p>Hello&nbsp;<b>world</b> &amp; co</p><p>next</p>") == "Hello world & co next"
+
+
+def test_drops_script_and_style():
+    assert html_to_text("<style>p{}</style>a<script>alert(1)</script>b") == "ab"
+
+
+def test_truncates():
+    out = html_to_text("word " * 100, max_chars=20)
+    assert len(out) <= 20 and out.endswith("…")
+
+
+def test_plain_text_passthrough():
+    assert html_to_text("already plain") == "already plain"

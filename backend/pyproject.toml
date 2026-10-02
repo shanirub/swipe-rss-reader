@@ -1,0 +1,40 @@
+[project]
+name = "swipe-rss"
+version = "0.1.0"
+description = "Swipe RSS reader backend: fetcher and API"
+authors = [
+    { name = "Shani Rub", email = "shani.rubovitch@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "alembic>=1.20.0",
+    "feedparser>=6.0.14",
+    "httpx>=0.28.1",
+    "pydantic>=2.13.5",
+    "sqlalchemy>=2.1.2",
+]
+
+[project.scripts]
+swipe-rss = "swipe_rss.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.9.28,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+
+[tool.ruff.lint.isort]
+known-third-party = ["alembic"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

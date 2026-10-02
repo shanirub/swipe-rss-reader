@@ -8,7 +8,7 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Phase 1: create the Python project skeleton (uv, ruff, pytest) under `backend/`.
+Deploy stage 1 on the server (`docker compose up -d --build`) and verify a scheduled run.
 
 ## Current Phase
 
@@ -33,12 +33,13 @@ Phase 1
 
 ### Phase 1: Ingest (stage 1)
 
-- [ ] Python project skeleton (uv, ruff, pytest)
-- [ ] SQLite engine: WAL, busy_timeout, STRICT, `BEGIN IMMEDIATE` recipe
-- [ ] Alembic baseline + `feed_status` / `items` / `tombstones`
-- [ ] `feeds.toml` loader (tomllib + Pydantic; invalid → abort run)
-- [ ] Fetcher: conditional GET → parse → `max_item_age_hours` filter → dedup → store
-- [ ] Scheduler container (supercronic)
+- [x] Python project skeleton (uv, ruff, pytest)
+- [x] SQLite engine: WAL, busy_timeout, STRICT, `BEGIN IMMEDIATE` recipe
+- [x] Alembic baseline + `feed_status` / `items` / `tombstones`
+- [x] `feeds.toml` loader (tomllib + Pydantic; invalid → abort run)
+- [x] Fetcher: conditional GET → parse → `max_item_age_hours` filter → dedup → store
+- [x] Scheduler container (supercronic) + migrate service, `compose.yaml`
+- [ ] Deploy on server and verify a scheduled fetch run
 - **Status:** in_progress
 
 ### Phase 2: API (stage 2)
@@ -95,6 +96,11 @@ Phase 1
 | Phases mirror `PROJECT_PLAN.md` stages | Avoid a second, diverging roadmap |
 | Keep allow-all tailnet ACL | User controls tailnet membership; SSRF guard becomes sole server→tailnet barrier |
 | RSS API on Serve :8443 | Serve on :443 blocks nginx's 0.0.0.0:443 bind |
+| `feeds.toml` → `config/feeds.toml`, dir bind mount | Single-file bind mounts go stale after git pull |
+| Fetch every 15 min | Conditional GET keeps it cheap; easy to change in `backend/crontab` |
+| One-shot `migrate` Compose service | Avoids migration races once the API container exists |
+| Python 3.14 | Matches desktop; container uses python:3.14-slim |
+| Summaries capped at 2000 chars; entries without a title skipped | Card text, not full articles; untitled entries can't be shown |
 | Drop deploy key | Public repo: anonymous HTTPS clone, no secret on server |
 | Disable OpenSSH (ssh.socket) | Tailscale SSH used; server has public IPv6 we can't probe; Hetzner console is fallback |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |

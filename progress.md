@@ -35,6 +35,18 @@
 - Files created/modified:
   - `.gitignore`, `findings.md`, `task_plan.md`, `progress.md`
 
+### Phase 1: Ingest
+
+- **Status:** in_progress
+- Actions taken:
+  - `backend/` uv project (Python 3.14): config, db (WAL/busy_timeout/BEGIN IMMEDIATE), STRICT models, Alembic baseline 0001, feeds loader, dedup, html→text, async fetcher, `swipe-rss fetch` CLI.
+  - 36 tests (pytest). A mutation check (plain BEGIN) makes the lock test fail as expected.
+  - Real local run: 30 feeds, 0 failed, 58 new items; second run 8×304, 0 new.
+  - Dockerfile (python:3.14-slim, uv, supercronic v0.2.49 pinned by sha256), crontab, compose.yaml (migrate + scheduler).
+  - Moved `feeds.toml` → `config/feeds.toml`.
+- Files created/modified:
+  - `backend/**`, `compose.yaml`, `config/feeds.toml`, `PROJECT_PLAN.md`
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -44,6 +56,8 @@
 | Public ports (IPv4) | TCP connect from desktop | all filtered | 22/80/443/8000 filtered | pass |
 | Serve HTTPS from desktop | curl https://<host>:{443,8443,9443} | 200, valid cert | 200 ×3, LE cert valid to 2026-12-31 | pass |
 | nginx + Serve coexistence | nginx start with Serve on :8443 | starts | started (user-verified) | pass |
+| Backend unit/integration tests | `uv run pytest` | all pass | 36 passed | pass |
+| Live fetch run (desktop) | 30 real feeds | no failures | 58 new, 0 failed; rerun 0 new, 8×304 | pass |
 | Docker loopback publish | nginx:alpine on 127.0.0.1:8001 | 200 on loopback only | 200, bound 127.0.0.1 | pass |
 
 ## Error Log

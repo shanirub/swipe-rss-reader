@@ -1,0 +1,74 @@
+"""ORM models. All tables are STRICT, so only Integer/Text column types are used."""
+
+from datetime import UTC, datetime
+
+from sqlalchemy import Integer, Text, TypeDecorator, UniqueConstraint
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+STRICT = {"sqlite_strict": True}
+
+
+class UTCDateTime(TypeDecorator):
+    """Timezone-aware datetime stored as ISO-8601 UTC text (sortable, readable in sqlite3)."""
+
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect) -> str | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            raise ValueError("naive datetime; use timezone-aware UTC")
+        return value.astimezone(UTC).isoformat(timespec="seconds")
+
+    def process_result_value(self, value: str | None, dialect) -> datetime | None:
+        return None if value is None else datetime.fromisoformat(value)
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class FeedStatus(Base):
+    """Per-feed fetch state, keyed by the stable feed id from feeds.toml."""
+
+    __tablename__ = "feed_status"
+    __table_args__ = (STRICT,)
+
+    feed_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    etag: Mapped[str | None] = mapped_column(Text)
+    last_modified: Mapped[str | None] = mapped_column(Text)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    last_success_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    last_new_item_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class Item(Base):
+    """A fetched article, subject to retention."""
+
+    __tablename__ = "items"
+    __table_args__ = (UniqueConstraint("feed_id", "dedup_key", name="uq_items_feed_dedup_key"), STRICT)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    feed_id: Mapped[str] = mapped_column(Text, nullable=False)
+    dedup_key: Mapped[str] = mapped_column(Text, nullable=False)
+    headline: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)  # plain text
+    link: Mapped[str | None] = mapped_column(Text)  # normalized
+    published_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    fetched_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    author: Mapped[str | None] = mapped_column(Text)
+    tags: Mapped[str | None] = mapped_column(Text)  # JSON array
+
+
+class Tombstone(Base):
+    """Every dedup key ever seen, written at first sight. Dedup checks only this table."""
+
+    __tablename__ = "tombstones"
+    __table_args__ = (STRICT,)
+
+    feed_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    dedup_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    first_seen_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
