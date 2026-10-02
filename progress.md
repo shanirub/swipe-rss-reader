@@ -24,6 +24,7 @@
   - Repo initialized; `.gitignore`; public GitHub repo created.
   - Non-root server inventory over Tailscale SSH (see findings.md).
   - Probed public IP from desktop: 22 filtered, 80/443 open (nginx), 8000 filtered.
+  - User disabled mcp-server + nginx; re-probe: 22/80/443 all filtered.
 - Files created/modified:
   - `.gitignore`, `findings.md`, `task_plan.md`, `progress.md`
 

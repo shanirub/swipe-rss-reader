@@ -8,7 +8,7 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-User runs root inventory commands on the server (ufw, ss -p, nginx config) and reports output.
+User installs Docker (Ubuntu packages) + adds srub to docker group; Claude verifies.
 
 ## Current Phase
 
@@ -19,7 +19,7 @@ Phase 0
 ### Phase 0: Server foundation (stage 0)
 
 - [x] Repo: `git init`, `.gitignore`, GitHub repo (public), first commit
-- [ ] Inventory current server state (non-root part done, see findings.md; root part pending)
+- [x] Inventory current server state (see findings.md)
 - [ ] Verify which HTTPS ports Tailscale Serve accepts (443, 8443, …)
 - [ ] Tailscale Serve: `:443` → API loopback port (8000 taken by mcp-server; now 8001)
 - [ ] Tailscale ACLs: only phone + desktop → `my-first-server`; server cannot initiate to other tailnet devices
