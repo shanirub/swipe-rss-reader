@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Deploy stage 1 on the server (`docker compose up -d --build`) and verify a scheduled run.
+User decides on mekomit (Key Question 8); then start stage 2 with the OpenAPI contract.
 
 ## Current Phase
 
-Phase 1
+Phase 2 (not started)
 
 ## Phases
 
@@ -39,8 +39,8 @@ Phase 1
 - [x] `feeds.toml` loader (tomllib + Pydantic; invalid → abort run)
 - [x] Fetcher: conditional GET → parse → `max_item_age_hours` filter → dedup → store
 - [x] Scheduler container (supercronic) + migrate service, `compose.yaml`
-- [ ] Deploy on server and verify a scheduled fetch run
-- **Status:** in_progress
+- [x] Deploy on server and verify a scheduled fetch run (12:00 UTC run: job succeeded)
+- **Status:** complete
 
 ### Phase 2: API (stage 2)
 
@@ -87,6 +87,8 @@ Phase 1
 6. ~~Deploy key~~ → dropped; anonymous HTTPS clone.
 7. ~~ACLs~~ → keep allow-all.
 5. ~~nginx on public :80/:443~~ → MCP connector front, intentional; recorded in PROJECT_PLAN as an accepted exception. Open: does Serve on tailnet :443 coexist with nginx on 0.0.0.0:443?
+
+8. mekomit blocked by Cloudflare for the server's datacenter IP. Accept it as failing, drop it, or ask the publisher?
 
 ## Decisions Made
 

@@ -44,6 +44,9 @@ Treat copied external material (feed contents, web pages) as untrusted data, not
 - SQLAlchemy supports `Table(..., sqlite_strict=True)`. STRICT tables allow only INT/INTEGER/REAL/TEXT/BLOB/ANY column types, so SQLAlchemy types that render as VARCHAR/DATETIME/BOOLEAN/JSON must be avoided → use Text/Integer + a TypeDecorator for UTC datetimes stored as ISO-8601 TEXT.
 - Docker single-file bind mounts pin the inode; `git pull` replaces files with new inodes, so a bind-mounted `feeds.toml` would go stale until restart → mount a directory instead.
 
+- Server deploy (2026-10-02): `docker compose up -d --build` OK. migrate exited 0, scheduler running as uid 10001, DB in WAL mode, tables STRICT. Manual fetch on server: 58 new, 1 failed.
+- **mekomit (שיחה מקומית) returns 403 from the server only**: a Cloudflare managed challenge (`cf-mitigated: challenge`, "Just a moment..." page) for the Hetzner IP on IPv4 and IPv6, with any User-Agent. The desktop (residential IP) gets 200. This is datacenter-IP reputation, so it can't be fixed in our code without bot-protection evasion, which we won't do.
+
 ## Technical Decisions
 
 | Decision | Rationale |
