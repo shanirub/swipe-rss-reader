@@ -8,7 +8,7 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-User runs root inventory commands on the server (ufw, ss -p, nginx config) and answers question 5.
+User runs root inventory commands on the server (ufw, ss -p, nginx config) and reports output.
 
 ## Current Phase
 
@@ -21,7 +21,7 @@ Phase 0
 - [x] Repo: `git init`, `.gitignore`, GitHub repo (public), first commit
 - [ ] Inventory current server state (non-root part done, see findings.md; root part pending)
 - [ ] Verify which HTTPS ports Tailscale Serve accepts (443, 8443, …)
-- [ ] Tailscale Serve: `:443` → API loopback port (8000 taken by mcp-server; proposed 8001)
+- [ ] Tailscale Serve: `:443` → API loopback port (8000 taken by mcp-server; now 8001)
 - [ ] Tailscale ACLs: only phone + desktop → `my-first-server`; server cannot initiate to other tailnet devices
 - [ ] Firewall verification: no public ports (scan from outside the tailnet)
 - [x] Automatic security updates (already enabled)
@@ -81,7 +81,7 @@ Phase 0
 2. ~~Server access~~ → Claude via Tailscale SSH (non-root); user runs root commands and reports output.
 3. ~~Server state~~ → see findings.md inventory.
 4. ~~Commit planning files~~ → yes.
-5. What is nginx on public :80/:443 serving, and must it stay public? Conflicts with "no public ports" and possibly with Serve on :443.
+5. ~~nginx on public :80/:443~~ → MCP connector front, intentional; recorded in PROJECT_PLAN as an accepted exception. Open: does Serve on tailnet :443 coexist with nginx on 0.0.0.0:443?
 
 ## Decisions Made
 
@@ -89,7 +89,7 @@ Phase 0
 |----------|-----------|
 | Planning files at repo root (legacy single-plan mode) | One task; named `.planning/` plans only needed for parallel tasks |
 | Phases mirror `PROJECT_PLAN.md` stages | Avoid a second, diverging roadmap |
-| Keep mcp-server running | User's other project; RSS API moves off :8000 |
+| Keep mcp-server + public nginx running | User's MCP connector; RSS API moves to 127.0.0.1:8001 |
 
 ## Errors Encountered
 
