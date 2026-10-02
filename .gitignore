@@ -1,0 +1,37 @@
+# Secrets (never commit; see PROJECT_PLAN.md §3 Workflow)
+.env
+!.env.example
+local.properties
+*.jks
+*.keystore
+rclone.conf
+restic-password*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# SQLite data
+*.db
+*.db-wal
+*.db-shm
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/.idea/
+*.apk
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+
+# planning-with-files local state (planning .md files are committed)
+.plan-attestation
+.mode
+.nonce

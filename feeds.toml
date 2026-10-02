@@ -1,0 +1,194 @@
+# Feed definitions. Re-read on every fetch run; invalid file aborts the run.
+# `id` is a stable slug: never change it once swipes reference it.
+
+[defaults]
+# Skip entries published longer ago than this (missing date = fetch time).
+# Temporary: keeps the initial backlog out until retention is settled.
+max_item_age_hours = 24
+
+# --- Privacy & Surveillance ---
+
+[[feeds]]
+id = "krebs"
+name = "Krebs on Security"
+url = "https://krebsonsecurity.com/feed/"
+
+[[feeds]]
+id = "intercept"
+name = "The Intercept"
+url = "https://theintercept.com/feed/?rss"
+
+[[feeds]]
+id = "markup"
+name = "The Markup"
+url = "https://themarkup.org/feeds/rss.xml"
+
+[[feeds]]
+id = "eff"
+name = "EFF"
+url = "https://www.eff.org/rss/updates.xml"
+
+# --- General tech news ---
+# Per-category feeds. Categories overlap; dedup is per feed, so cross-posted
+# articles appear once per category.
+
+# Main feeds: superset of the categories below, would duplicate every item.
+# [[feeds]]
+# id = "ars"
+# name = "Ars Technica"
+# url = "https://arstechnica.com/feed/"
+
+# [[feeds]]
+# id = "wired"
+# name = "Wired"
+# url = "https://www.wired.com/feed/rss"
+
+[[feeds]]
+id = "ars-security"
+name = "Ars Technica — Security"
+url = "https://arstechnica.com/security/feed/"
+
+[[feeds]]
+id = "ars-information-technology"
+name = "Ars Technica — IT"
+url = "https://arstechnica.com/information-technology/feed/"
+
+[[feeds]]
+id = "ars-gadgets"
+name = "Ars Technica — Gadgets"
+url = "https://arstechnica.com/gadgets/feed/"
+
+[[feeds]]
+id = "ars-ai"
+name = "Ars Technica — AI"
+url = "https://arstechnica.com/ai/feed/"
+
+[[feeds]]
+id = "ars-tech-policy"
+name = "Ars Technica — Tech Policy"
+url = "https://arstechnica.com/tech-policy/feed/"
+
+[[feeds]]
+id = "ars-science"
+name = "Ars Technica — Science"
+url = "https://arstechnica.com/science/feed/"
+
+[[feeds]]
+id = "ars-space"
+name = "Ars Technica — Space"
+url = "https://arstechnica.com/space/feed/"
+
+[[feeds]]
+id = "ars-health"
+name = "Ars Technica — Health"
+url = "https://arstechnica.com/health/feed/"
+
+[[feeds]]
+id = "ars-cars"
+name = "Ars Technica — Cars"
+url = "https://arstechnica.com/cars/feed/"
+
+[[feeds]]
+id = "ars-gaming"
+name = "Ars Technica — Gaming"
+url = "https://arstechnica.com/gaming/feed/"
+
+[[feeds]]
+id = "ars-culture"
+name = "Ars Technica — Culture"
+url = "https://arstechnica.com/culture/feed/"
+
+[[feeds]]
+id = "wired-security"
+name = "Wired — Security"
+url = "https://www.wired.com/feed/category/security/latest/rss"
+
+[[feeds]]
+id = "wired-business"
+name = "Wired — Business"
+url = "https://www.wired.com/feed/category/business/latest/rss"
+
+[[feeds]]
+id = "wired-politics"
+name = "Wired — Politics"
+url = "https://www.wired.com/feed/category/politics/latest/rss"
+
+[[feeds]]
+id = "wired-science"
+name = "Wired — Science"
+url = "https://www.wired.com/feed/category/science/latest/rss"
+
+[[feeds]]
+id = "wired-gear"
+name = "Wired — Gear"
+url = "https://www.wired.com/feed/category/gear/latest/rss"
+
+[[feeds]]
+id = "wired-backchannel"
+name = "Wired — Backchannel"
+url = "https://www.wired.com/feed/category/backchannel/latest/rss"
+
+[[feeds]]
+id = "wired-culture"
+name = "Wired — Culture"
+url = "https://www.wired.com/feed/category/culture/latest/rss"
+
+[[feeds]]
+id = "wired-ai"
+name = "Wired — AI"
+url = "https://www.wired.com/feed/tag/ai/latest/rss"
+
+# Stale: no posts since 2024-06.
+# [[feeds]]
+# id = "wired-ideas"
+# name = "Wired — Ideas"
+# url = "https://www.wired.com/feed/category/ideas/latest/rss"
+
+# --- Hebrew ---
+
+[[feeds]]
+id = "mekomit"
+name = "שיחה מקומית"
+url = "https://www.mekomit.co.il/feed/"
+
+[[feeds]]
+id = "ha-makom"
+name = "המקום הכי חם בגיהנום"
+url = "https://www.ha-makom.co.il/feed/"
+
+[[feeds]]
+id = "shomrim"
+name = "שומרים"
+url = "https://www.shomrim.news/hebrew/rss.xml"
+
+# רוזה מדיה: no text feed (YouTube only), not included.
+
+# TODO: broken as of 2026-10-01 (self-redirect loop behind Cloudflare). Revisit.
+# [[feeds]]
+# id = "the7eye"
+# name = "העין השביעית"
+# url = "https://www.the7eye.org.il/feed"
+
+# --- Open Source & Standards ---
+
+[[feeds]]
+id = "linux-foundation"
+name = "Linux Foundation"
+url = "https://www.linuxfoundation.org/blog/rss.xml"
+
+[[feeds]]
+id = "openinfra"
+name = "OpenInfra Foundation"
+url = "https://openinfra.org/rss.xml"
+
+[[feeds]]
+id = "openssf"
+name = "OpenSSF"
+url = "https://openssf.org/feed/"
+
+# --- Networking & Telecom Standards ---
+
+[[feeds]]
+id = "rcr-wireless"
+name = "RCR Wireless"
+url = "https://www.rcrwireless.com/feed/"
