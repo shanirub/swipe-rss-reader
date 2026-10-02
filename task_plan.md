@@ -8,7 +8,7 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-User: enable HTTPS certs in admin console, set srub as tailscale operator, disable ssh.socket; answer the deploy-key and ACL questions.
+User: start nginx briefly for the coexistence test; paste the tailnet policy + list devices allowed to reach the server.
 
 ## Current Phase
 
@@ -20,13 +20,14 @@ Phase 0
 
 - [x] Repo: `git init`, `.gitignore`, GitHub repo (public), first commit
 - [x] Inventory current server state (see findings.md)
-- [ ] Verify which HTTPS ports Tailscale Serve accepts (443, 8443, …)
-- [ ] Tailscale Serve: `:443` → API loopback port (8000 taken by mcp-server; now 8001)
+- [x] Verify which HTTPS ports Tailscale Serve accepts (443/8443/9443 all work)
+- [x] Tailscale Serve: `:443` → `localhost:8001` (persistent, `--bg`)
+- [ ] Serve :443 coexisting with nginx on 0.0.0.0:443 (needs user to start nginx briefly)
 - [ ] Tailscale ACLs: only phone + desktop → `my-first-server`; server cannot initiate to other tailnet devices
-- [ ] Firewall verification: no public ports (scan from outside the tailnet)
+- [x] Firewall verification: IPv4 22/80/443/8000 filtered; OpenSSH disabled (IPv6 not probeable from desktop)
 - [x] Automatic security updates (already enabled)
 - [x] Install Docker + Compose
-- [ ] Read-only deploy key for this repo; server clones it
+- [x] ~~Deploy key~~ dropped (public repo); server cloned `~/swipe-rss-reader` over HTTPS
 - **Status:** in_progress
 
 ### Phase 1: Ingest (stage 1)
@@ -81,7 +82,7 @@ Phase 0
 2. ~~Server access~~ → Claude via Tailscale SSH (non-root); user runs root commands and reports output.
 3. ~~Server state~~ → see findings.md inventory.
 4. ~~Commit planning files~~ → yes.
-6. Public repo → is a deploy key still needed, or clone anonymously over HTTPS?
+6. ~~Deploy key~~ → dropped; anonymous HTTPS clone.
 7. ACLs: current policy file? Which devices besides phone + desktop may reach the server?
 5. ~~nginx on public :80/:443~~ → MCP connector front, intentional; recorded in PROJECT_PLAN as an accepted exception. Open: does Serve on tailnet :443 coexist with nginx on 0.0.0.0:443?
 
@@ -91,7 +92,9 @@ Phase 0
 |----------|-----------|
 | Planning files at repo root (legacy single-plan mode) | One task; named `.planning/` plans only needed for parallel tasks |
 | Phases mirror `PROJECT_PLAN.md` stages | Avoid a second, diverging roadmap |
-| Keep mcp-server + public nginx running | User's MCP connector; RSS API moves to 127.0.0.1:8001 |
+| Drop deploy key | Public repo: anonymous HTTPS clone, no secret on server |
+| Disable OpenSSH (ssh.socket) | Tailscale SSH used; server has public IPv6 we can't probe; Hetzner console is fallback |
+| Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 
 ## Errors Encountered
 

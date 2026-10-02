@@ -26,6 +26,9 @@
   - Probed public IP from desktop: 22 filtered, 80/443 open (nginx), 8000 filtered.
   - User disabled mcp-server + nginx; re-probe: 22/80/443 all filtered.
   - User installed Docker; verified as srub (version, hello-world, loopback publish on 8001).
+  - User enabled HTTPS certs, set srub as tailscale operator, disabled ssh.socket (verified: nothing on :22).
+  - Server cloned repo anonymously over HTTPS into ~/swipe-rss-reader.
+  - Serve tested on 443/8443/9443 against a temp container; kept only 443 → localhost:8001.
 - Files created/modified:
   - `.gitignore`, `findings.md`, `task_plan.md`, `progress.md`
 
@@ -36,6 +39,7 @@
 | feeds.toml loads | `tomllib.load` | valid, unique ids | 30 feeds, unique | pass |
 | All feeds fetch/parse | httpx + feedparser | 200, bozo=False | all pass | pass |
 | Public ports (IPv4) | TCP connect from desktop | all filtered | 22/80/443/8000 filtered | pass |
+| Serve HTTPS from desktop | curl https://<host>:{443,8443,9443} | 200, valid cert | 200 ×3, LE cert valid to 2026-12-31 | pass |
 | Docker loopback publish | nginx:alpine on 127.0.0.1:8001 | 200 on loopback only | 200, bound 127.0.0.1 | pass |
 
 ## Error Log

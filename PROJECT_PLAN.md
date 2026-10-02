@@ -49,7 +49,7 @@ All networking happens over **Tailscale** (WireGuard-based private mesh VPN). No
 - Serve adds identity headers (e.g., `Tailscale-User-Login`) to proxied requests. Not used for auth: they can be spoofed if the API is ever reached without going through Serve.
 - **API auth: static bearer token** on top of Tailscale (defense in depth against local processes on the server and misconfiguration such as Funnel or a `0.0.0.0` publish). Server: token in `.env`, constant-time comparison. App: token in gitignored `local.properties` → `BuildConfig`, added by an OkHttp interceptor. Back it up alongside the keystore; rotation requires an app rebuild. Declared as a security scheme in the OpenAPI contract.
 - **Machine name:** keep `my-first-server` (tailnet name is already randomized: `porcupine-celsius.ts.net`). The server is shared with other hobby services (e.g., Vikunja), so the name is intentionally not RSS-specific.
-- **Multiple services on the host:** one **HTTPS port per service** via Serve (e.g., `:443` → RSS API, `:8443` → Vikunja), not sub-paths. Verify which ports Serve accepts in stage 0. Each service in its own Compose project with its own Docker network and volumes; never mount the Docker socket into a container.
+- **Multiple services on the host:** one **HTTPS port per service** via Serve (e.g., `:443` → RSS API, `:8443` → Vikunja), not sub-paths. Verified in stage 0: Serve accepts arbitrary HTTPS ports (443, 8443, 9443 tested), all with the same MagicDNS certificate. Each service in its own Compose project with its own Docker network and volumes; never mount the Docker socket into a container.
 - **Existing public service (accepted exception):** nginx on public `:80`/`:443` fronts the owner's MCP server (`mcp-server.service`, `127.0.0.1:8000`, domain `mcp.ministryofpa.ws`) for a claude.ai connector. Unrelated to this project; leave it running. nginx binds `0.0.0.0:443`, which includes the Tailscale IP, so stage 0 must verify that Serve on tailnet `:443` still works alongside it (fallback: another Serve port for the RSS API).
 - **Tailscale ACLs:** restrict which tailnet devices may reach `my-first-server` and on which ports (e.g., phone + main desktop only), so a compromised device elsewhere on the tailnet can't reach every service. Also block `my-first-server` from initiating connections to other tailnet devices (second layer behind the extraction SSRF guard).
 
@@ -61,7 +61,7 @@ All networking happens over **Tailscale** (WireGuard-based private mesh VPN). No
 ### Workflow
 
 - Hosted on **GitHub**. Development (backend and Android) happens on the desktop; the server only runs committed code.
-- Server pulls with a **read-only deploy key** scoped to this repo (not a personal SSH key or token).
+- The repo is **public**, so the server clones and pulls **anonymously over HTTPS** (no deploy key, no credentials on the server). If the repo ever goes private, switch to a read-only deploy key.
 - Deploy: `git pull && docker compose up -d --build`. Dependencies are installed inside the image build, pinned by `uv.lock`. Later option: build images in CI, push to GHCR, and have the server pull images only.
 - **Secrets never in git:** `.env` (commit `.env.example`), rclone/restic config and passphrase, Android signing keystore, `local.properties` (holds the API token).
 - The Android app is built on the desktop; the server ignores `android/`.
@@ -218,7 +218,7 @@ Feed definitions themselves live in the feeds file, not the database.
 
 Each stage should be usable and testable before the next. Stages 0–4 are backend-only and testable with `curl` over the tailnet.
 
-0. **Server foundation:** Docker, Tailscale Serve, Tailscale ACLs, firewall verification (no public ports), automatic security updates, read-only deploy key.
+0. **Server foundation:** Docker, Tailscale Serve, Tailscale ACLs, firewall verification (no public ports), automatic security updates, repo clone on the server.
 Stages are **vertical slices**: each stage adds the tables it needs via a new Alembic migration, next to the code that uses them.
 
 1. **Ingest:** SQLite settings, Alembic baseline, `feed_status` / `items` / `tombstones` tables. Fetcher: feeds file → fetch (conditional GET) → parse → deduplicate (incl. tombstones) → store. Run by the scheduler container. Testable by running a fetch and inspecting the DB with `sqlite3`.
