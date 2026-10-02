@@ -8,7 +8,7 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-User: start nginx briefly for the coexistence test; paste the tailnet policy + list devices allowed to reach the server.
+User: start nginx briefly to confirm coexistence with Serve :8443; decide whether to keep allow-all ACL.
 
 ## Current Phase
 
@@ -21,8 +21,9 @@ Phase 0
 - [x] Repo: `git init`, `.gitignore`, GitHub repo (public), first commit
 - [x] Inventory current server state (see findings.md)
 - [x] Verify which HTTPS ports Tailscale Serve accepts (443/8443/9443 all work)
-- [x] Tailscale Serve: `:443` → `localhost:8001` (persistent, `--bg`)
-- [ ] Serve :443 coexisting with nginx on 0.0.0.0:443 (needs user to start nginx briefly)
+- [x] Tailscale Serve: `:8443` → `localhost:8001` (persistent, `--bg`)
+- [x] Serve :443 vs nginx: conflict confirmed (nginx bind() fails) → RSS moved to Serve :8443
+- [ ] Verify nginx starts with Serve on :8443 (user starts nginx briefly, then stops it)
 - [ ] Tailscale ACLs: only phone + desktop → `my-first-server`; server cannot initiate to other tailnet devices
 - [x] Firewall verification: IPv4 22/80/443/8000 filtered; OpenSSH disabled (IPv6 not probeable from desktop)
 - [x] Automatic security updates (already enabled)

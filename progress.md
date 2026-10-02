@@ -29,6 +29,7 @@
   - User enabled HTTPS certs, set srub as tailscale operator, disabled ssh.socket (verified: nothing on :22).
   - Server cloned repo anonymously over HTTPS into ~/swipe-rss-reader.
   - Serve tested on 443/8443/9443 against a temp container; kept only 443 → localhost:8001.
+  - nginx failed to start (bind 0.0.0.0:443 in use by tailscaled) → moved Serve to 8443 → localhost:8001; 443 freed.
 - Files created/modified:
   - `.gitignore`, `findings.md`, `task_plan.md`, `progress.md`
 
@@ -46,4 +47,4 @@
 
 | Timestamp | Error | Attempt | Resolution |
 |-----------|-------|---------|------------|
-|           |       |         |            |
+| 2026-10-02 | nginx: bind() to 0.0.0.0:443 failed (98: Address already in use) | 1 | Serve holds 443 on the Tailscale IP; moved RSS to Serve :8443 |
