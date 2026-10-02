@@ -57,12 +57,13 @@ All networking happens over **Tailscale** (WireGuard-based private mesh VPN). No
 
 - **Monorepo** containing backend, Android app, and the API contract.
 - The **OpenAPI spec** file in the repo is the single source of truth for the backend ↔ app interface.
+- Spec: **`api/openapi.yaml`** (OpenAPI 3.1), **hand-written first**; code follows it. Backend drift is caught by **contract tests** in pytest: (1) the app's set of (path, method) pairs equals the spec's; (2) endpoint tests validate real requests/responses against the spec (e.g., `openapi-core`; verify Python 3.14 + OpenAPI 3.1 support, else `jsonschema`). No exact comparison with FastAPI's generated spec (brittle). FastAPI's own `/openapi.json` and `/docs` are disabled or serve the YAML, so no second divergent spec is exposed. Behavior the spec can't express (idempotency, queue ordering, swipe flag, auth) is covered by ordinary tests derived from this plan.
 
 ### Workflow
 
 - Hosted on **GitHub**. Development (backend and Android) happens on the desktop; the server only runs committed code.
 - The repo is **public**, so the server clones and pulls **anonymously over HTTPS** (no deploy key, no credentials on the server). If the repo ever goes private, switch to a read-only deploy key.
-- Deploy: `git pull && docker compose up -d --build`. Dependencies are installed inside the image build, pinned by `uv.lock`. Later option: build images in CI, push to GHCR, and have the server pull images only.
+- Deploy: `git pull && docker compose up -d --build`. Claude may run exactly this plus read-only checks over Tailscale SSH, after the owner approves each deploy; all other server changes are done by the owner. Dependencies are installed inside the image build, pinned by `uv.lock`. Later option: build images in CI, push to GHCR, and have the server pull images only.
 - **Secrets never in git:** `.env` (commit `.env.example`), rclone/restic config and passphrase, Android signing keystore, `local.properties` (holds the API token).
 - The Android app is built on the desktop; the server ignores `android/`.
 
@@ -127,9 +128,10 @@ Rule: **item properties are captured at swipe time** (items are pruned, so anyth
 
 | Field | Purpose |
 |---|---|
-| `swipe_id` | Client-generated UUID; idempotency for the offline queue. |
+| `swipe_id` | Client-generated UUID identifying one swipe *event*; idempotency for the offline queue (a retried send of the same swipe is ignored). |
 | `action` | never / save / read now. |
 | `feed_id` | Stable feed slug; likely the strongest single feature. |
+| `item_key` | Identifies the *article*: together with `feed_id` it is the item's dedup key (`items.dedup_key`). Groups multiple swipes on the same article (e.g., undo, then a new swipe) so "latest swipe per item wins". |
 | `headline` | Permanent copy. |
 | `summary` | Permanent copy, **plain text** (HTML is stripped at ingest, so items are already plain text when served). |
 | `link` | Normalized; enables re-fetching full text later (embeddings) and link domain as a feature. |
@@ -138,7 +140,11 @@ Rule: **item properties are captured at swipe time** (items are pruned, so anyth
 | `swiped_at` | Client time; the real event time (may precede receipt by days when offline). |
 | `received_at` | Server time; audit. |
 | `time_to_swipe_ms` | Nullable; how long the card was on screen before the swipe (implicit interest signal). |
+| `fetched_at` | When the item entered the queue (copied from the queue response). Article-age fallback when `published_at` is missing; also time-in-queue. |
+| `tz_offset_minutes` | Phone's UTC offset at swipe time; `swiped_at` is stored in UTC, so this keeps local time of day (reading habits) recoverable. |
+| `app_version` | App `versionCode`. Separates labels from before/after app changes (e.g., gesture or meaning of an action). |
 
+- **Completeness check (2026-10-02):** everything else stage 7/8 needs is in the log or derivable (session effects from `swiped_at` ordering; link domain from `link`). Impressions are not logged: in a swipe UI nearly every displayed card ends in a swipe, and expired cards are unlabeled by design.
 - **Extracted full text is deliberately not a training feature.** Only positives (save / read now) get extracted, so training on it would leak the label. Train on fields available uniformly for all labels.
 
 ### Swipe recording
@@ -146,14 +152,16 @@ Rule: **item properties are captured at swipe time** (items are pruned, so anyth
 - **Idempotency:** the phone generates a `swipe_id` (UUIDv4) at swipe time and stores it with the swipe in the Room queue. Server: `swipe_id` is the primary key; inserts use `ON CONFLICT(swipe_id) DO NOTHING`; the response is success whether new or duplicate, so retries are always safe.
 - **Endpoint:** a single batch `POST /swipes` accepting 1..N swipes (live swiping sends one, offline sync sends the backlog). Partial failures are resolved by resending the whole batch.
 - **Append-only log:** no per-item uniqueness. For training, the **latest swipe per item wins**. Undo (stage 8) becomes another event, not a schema change.
-- **Card snapshot:** each swipe carries the item fields the phone received from the queue (headline, summary, link, `feed_id`, `published_at`, tags, author); the server stores them as given (Pydantic-validated, length-limited). This makes swipes independent of item pruning (offline for any duration) and makes the label pair with exactly what was displayed. If the item still exists, the server also removes it from the queue.
+- **Card snapshot:** each swipe carries the item fields the phone received from the queue (`feed_id`, `item_key`, headline, summary, link, `published_at`, `fetched_at`, tags, author); the server stores them as given (Pydantic-validated, length-limited). This makes swipes independent of item pruning (offline for any duration) and makes the label pair with exactly what was displayed. If the item still exists (looked up by `(feed_id, item_key)`), the server also removes it from the queue by setting `items.swiped_at` (a flag, not a delete); the queue serves only rows with `swiped_at IS NULL`, and the pruning job deletes swiped rows later. Flagging keeps stage 8 undo simple: clearing the flag returns the card to the queue, whereas a deleted item could never come back (its key is tombstoned).
+- **Item identity is `(feed_id, item_key)`**, where `item_key` is the item's dedup key, exposed in the queue response under that name. Chosen over `items.id`: the rowid can be reused after pruning, which would silently merge unrelated articles in the permanent swipe log; the dedup key is derived from the article and stays meaningful after the item is gone. Known limitation: if a feed's dedup rule changes (e.g., a `dedup = "link"` override is added, or the feed's GUIDs change), the same article gets a new key and counts as a different item.
 
 ### Content extraction
 
 - **Read now:** no extraction. The app opens the original page directly in **Custom Tabs** (online by definition; page exists now). An in-app reader for read-now items is a possible later addition.
 - **Save for later:** extracted **shortly after save**, so saved items survive pages disappearing, changing, or going behind a paywall within the two-week window.
   - The swipe is recorded immediately; extraction never runs inside the request.
-  - **DB as queue:** `saved` rows carry `extraction_status` (pending / done / failed), `attempts`, `last_error`. A scheduler-container job runs **every minute** and processes pending rows.
+  - **One `saved` row per article:** primary key `(feed_id, item_key)`; a repeated save of the same article (`ON CONFLICT DO NOTHING`) adds nothing. The row references the save swipe (`swipe_id` → `swipes`), and headline, link etc. come from that swipe's snapshot rather than being copied, so saving works even if the `items` row is already pruned (late offline sync).
+  - **DB as queue:** `saved` rows carry `extraction_status` (pending / done / failed), `attempts`, `last_error`, `next_attempt_at` (schedules the backoff). A scheduler-container job runs **every minute** and processes pending rows that are due.
   - **Retries:** up to 3 attempts with increasing backoff, then `failed`. The app shows "couldn't extract — open original" and falls back to Custom Tabs.
   - Known limitation: trafilatura can't reliably detect paywalls; a paywalled page may "succeed" with teaser text only.
 - **SSRF guard** (extraction fetches URLs from third-party feed content and client snapshots): allow only `http`/`https`; resolve DNS and refuse loopback, private, link-local, and Tailscale (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) addresses, re-checking after every redirect; enforce a timeout and a max response size.
@@ -168,6 +176,7 @@ Rule: **item properties are captured at swipe time** (items are pruned, so anyth
 ### Queue ordering (pre-ML)
 
 - **Round-robin across feeds, oldest-first within each feed.** This gives fair exposure, and items are seen before they expire. It will be replaced by ML ranking later.
+- **Queue endpoint semantics:** returns up to `limit` unswiped items. It is stateless: the server doesn't track what the phone already holds, so items fetched earlier but not yet swiped (or whose swipes haven't synced) are returned again; the phone deduplicates by `(feed_id, item_key)`.
 
 ### Observability
 
@@ -205,9 +214,9 @@ Rule: **item properties are captured at swipe time** (items are pruned, so anyth
 ## 4. Data model (high level)
 
 - **feed_status:** per-feed fetch state, conditional-GET headers, last successful fetch, last new item, last error.
-- **items:** fetched articles (subject to retention).
-- **swipes:** permanent swipe log; see "Swipe log fields" in §3.
-- **saved:** read-later entries with extracted content and extraction state (`extraction_status`, `attempts`, `last_error`).
+- **items:** fetched articles (subject to retention); nullable `swiped_at` flags swiped items, which leave the queue but stay until pruned.
+- **swipes:** permanent swipe log; see "Swipe log fields" in §3. Item identity `(feed_id, item_key)`.
+- **saved:** read-later entries, one per `(feed_id, item_key)`, referencing the save swipe (`swipe_id`); extracted content and extraction state (`extraction_status`, `attempts`, `last_error`, `next_attempt_at`), nullable `read_at`.
 - **tombstones:** seen `(feed_id, key)` dedup keys with first-seen timestamps (~90 days), written at insert time.
 
 Feed definitions themselves live in the feeds file, not the database.
@@ -222,7 +231,7 @@ Each stage should be usable and testable before the next. Stages 0–4 are backe
 Stages are **vertical slices**: each stage adds the tables it needs via a new Alembic migration, next to the code that uses them.
 
 1. **Ingest:** SQLite settings, Alembic baseline, `feed_status` / `items` / `tombstones` tables. Fetcher: feeds file → fetch (conditional GET) → parse → deduplicate (incl. tombstones) → store. Run by the scheduler container. Testable by running a fetch and inspecting the DB with `sqlite3`.
-2. **API:** OpenAPI contract first, then `swipes` / `saved` tables (new migration) and endpoints for: swipe queue, recording swipes, saved list, extracted content, per-feed status.
+2. **API:** OpenAPI contract first, then `swipes` / `saved` tables (new migration) and endpoints for: swipe queue, recording swipes, saved list, extracted content, per-feed status. Includes the `api` Compose service (published on `127.0.0.1:8001`) so the stage is testable with `curl` over the tailnet; stage 4 completes the rest of the Compose setup.
 3. **Retention:** pruning job (unswiped items, saved items, tombstone expiry). Comes after the API because its rules depend on swipe and save state.
 4. **Deployment & backups:** full Compose setup, encrypted rclone backup to Google Drive.
 5. **Android MVP:** swipe cards against the API, Room cache, offline swipe queue with WorkManager sync, feed-status screen.
@@ -238,6 +247,7 @@ All decisions needed before stages 0–2 are resolved. Remaining items can wait 
 
 - What happens to existing items when a feed is removed from `feeds.toml`. *(after stage 1; default: let them expire)*
 - Behavior of a saved item after it is read (remove vs. move to a read history). *(stage 6; a nullable `read_at` column keeps both options open cheaply)*
+  - Either way, **opening a saved item is logged as a permanent, append-only event** (it is a training signal: saved-but-never-read is a weaker positive), not only as `saved.read_at`, which disappears when `saved` rows are pruned after two weeks. *(stage 6)*
 - Backup method and policy: snapshot via `sqlite3 .backup` or `VACUUM INTO` before upload (never copy the live WAL database file); frequency and retention. *(stage 4)*
 - Whether "read now" is weighted as a stronger positive than "save". *(stage 7; actions are logged distinctly, so this is a training-time choice)*
 - ML retraining cadence (e.g., nightly vs. after N new swipes). *(stage 7)*

@@ -59,6 +59,22 @@
 - Files created/modified:
   - `config/feeds.toml`, `task_plan.md`, `findings.md`, `progress.md`
 
+## Session: 2026-10-02 (continued)
+
+### Phase 2 design review
+
+- **Status:** in_progress
+- Decisions (recorded in `PROJECT_PLAN.md` + `task_plan.md`):
+  1. Item identity `(feed_id, item_key)`, `item_key` = dedup key.
+  2. Swipe flags `items.swiped_at` (no delete); `saved` PK `(feed_id, item_key)`, `swipe_id` → `swipes`, `next_attempt_at`.
+  3. Hand-written `api/openapi.yaml` (3.1) + contract tests.
+  4. Deploys: Claude runs deploy command + read-only checks after per-deploy approval.
+  5. Swipe-log completeness: add `fetched_at`, `tz_offset_minutes`, `app_version`; stage 6 logs reads permanently; no impressions.
+  6. Queue endpoint: `limit`, stateless, phone dedups by `(feed_id, item_key)`.
+  7. `api` Compose service added in Phase 2.
+- Created branch `phase2`; committed and pushed the design review.
+- Files modified: `PROJECT_PLAN.md`, `task_plan.md`, `findings.md`, `progress.md`
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -85,8 +101,8 @@
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phases 0–1 complete; Phase 2 (stage 2, API) not started |
+| Where am I? | Phases 0–1 complete; Phase 2 design review done, on branch `phase2`; next: `api/openapi.yaml` |
 | Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research) |
-| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min |
+| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md` |
