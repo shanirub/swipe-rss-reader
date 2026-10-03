@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Migration `0003`: `swipes` and `saved` tables plus nullable `items.swiped_at` (PROJECT_PLAN §3 Swipe log fields, Swipe recording, Content extraction; §4). Before writing contract tests, hold the testing-coverage discussion (Key Question 11). Branch `phase2`.
+FastAPI app skeleton: add `fastapi`/`uvicorn`/`trafilatura` deps, app factory with FastAPI's `/docs` and `/openapi.json` disabled, `GET /health`, bearer-token auth. Before writing contract tests, hold the testing-coverage discussion (Key Question 11). Branch `phase2`.
 
 ## Current Phase
 
-Phase 2 (in progress: design, spec, generated models, ingest caps done; next migration `0003`)
+Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003` done; next FastAPI app skeleton)
 
 ## Phases
 
@@ -48,8 +48,8 @@ Phase 2 (in progress: design, spec, generated models, ingest caps done; next mig
 - [x] OpenAPI contract `api/openapi.yaml` drafted, reviewed (ingest caps, invalid swipes/dead letters, nested card, API conventions), validated (2026-10-03)
 - [x] Generate API models from the spec + freshness test (2026-10-03): `backend/src/swipe_rss/api_models.py`, config in `pyproject.toml`, `tests/test_api_models.py` uses `--check`
 - [x] Fetcher ingest caps = spec limits (headline 1000, author 500, tags 50×200, link 4096 → null) + test fetcher limits ≤ model limits; migration `0002` caps existing rows (2026-10-03)
-- [ ] `swipes` / `saved` migration (`0003`), incl. `items.swiped_at`
-- [ ] FastAPI app skeleton: add `fastapi`/`uvicorn`/`trafilatura` deps; disable FastAPI's `/docs` and `/openapi.json` (the spec is the YAML)
+- [x] `swipes` / `saved` migration (`0003`), incl. `items.swiped_at` (2026-10-03)
+- [ ] FastAPI app skeleton: add `fastapi`/`uvicorn`/`trafilatura` deps; disable FastAPI's `/docs` and `/openapi.json` (the spec is the YAML); `GET /health`
 - [ ] Endpoints: queue, `POST /swipes`, saved list, extracted content, feed status
 - [ ] Bearer token auth
 - [ ] Log every `422` on `POST /swipes` (swipe_ids, errors, body) via an exception handler
@@ -140,6 +140,9 @@ Phase 2 (in progress: design, spec, generated models, ingest caps done; next mig
 | Data migrations copy their constants instead of importing app code | A migration must keep doing what it did when written |
 | Root `README.md` links to `PROJECT_PLAN.md` + `task_plan.md` for status instead of stating it | A hardcoded status line would go stale with every commit |
 | `backend/tests/README.md` documents every test file and the test strategy; update it when tests are added | Keeps the test suite understandable; the API contract-test strategy (Key Question 11) gets added there once decided |
+| `0003`: CHECK constraints on `swipes.action` and `saved.extraction_status`; FK `saved.swipe_id` → `swipes`; index `(feed_id, item_key)` on `swipes`; `saved.next_attempt_at` NULL = due now | The DB rejects invalid states itself; index serves "latest swipe per item" and queue removal |
+| Test: `models.py` matches the migrations (Alembic `compare_metadata`) | Code and schema can't silently drift |
+| Recheck all maintained `.md` files before every commit | User rule (2026-10-03): every recheck so far found stale or missing data |
 | Phase 2 work on branch `phase2` | User request (2026-10-02) |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 
@@ -149,11 +152,14 @@ Phase 2 (in progress: design, spec, generated models, ingest caps done; next mig
 |-------|---------|------------|
 | nginx: `bind() to 0.0.0.0:443 failed (98: Address already in use)` | 1 | Serve holds :443 on the Tailscale IP; moved RSS to Serve :8443 |
 | mekomit fetch: `403 Forbidden` (Cloudflare challenge) on server only | 1 | Not fixable without evasion; feed commented out |
+| `--check` mutation test reported exit 0 on a stale spec (2026-10-03) | 1 | Measurement error: `$?` came from `tail` in a pipe; without the pipe exit 1 |
+| Constraint test passed with the action CHECK removed (2026-10-03) | 1 | Test reused an existing `swipe_id` (PK clash); fixed with a distinct id |
 
 ## Notes
 
 - Update phase status as work progresses: `pending` → `in_progress` → `complete`.
 - Re-read `PROJECT_PLAN.md` before each phase; don't re-open settled decisions.
-- Dev loop: edit on desktop → `cd backend && uv run ruff check . && uv run ruff format --check . && uv run pytest` → optional local `docker compose up --build` → commit + push → server `cd ~/swipe-rss-reader && git pull && docker compose up -d --build`.
+- Dev loop: edit on desktop → `cd backend && uv run ruff check . && uv run ruff format --check . && uv run pytest` → optional local `docker compose up --build` → **recheck all `.md` files** → commit + push → server `cd ~/swipe-rss-reader && git pull && docker compose up -d --build`.
+- **Mandatory before every commit (user rule, 2026-10-03): recheck all maintained `.md` files for stale or missing data**: `PROJECT_PLAN.md`, `task_plan.md`, `progress.md`, `findings.md`, `README.md`, `backend/tests/README.md`. Read them in full, compare with what changed, fix, then commit. It catches something nearly every time.
 - Deploy: Claude runs `cd ~/swipe-rss-reader && git pull && docker compose up -d --build` over Tailscale SSH **only after the user approves that deploy**, then read-only checks (`docker compose ps`, logs, read-only DB queries). Never edit files in the server checkout. Root, Tailscale and system changes go to the user. Note: `srub` is in group `docker` (root-equivalent).
 - Server facts: RSS API URL `https://my-first-server.porcupine-celsius.ts.net:8443` → `127.0.0.1:8001` (nothing listening until stage 2). DB in named volume `swipe-rss-reader_data` at `/data/swipe_rss.db`.

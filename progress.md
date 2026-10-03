@@ -117,6 +117,17 @@
 - Root `README.md`: short description, links to `PROJECT_PLAN.md` (design, stages) and `task_plan.md` (live status), repo structure, dev commands.
 - `backend/tests/README.md`: test strategy (real SQLite + migrations, no network, guarantee tests, mutation checks) and what each test file covers; contract-test strategy pending (Key Question 11). Test descriptions checked against the test code.
 - Files created/modified: `README.md` (new), `backend/tests/README.md` (new), `task_plan.md`, `findings.md`, `progress.md`
+- Committed `45c2c61` and pushed.
+
+### Phase 2: migration 0003
+
+- **Status:** complete
+- ORM models `Swipe`, `Saved`, `Item.swiped_at`; migration `0003_swipes_saved` (CHECKs, FK, index; `items.swiped_at` via plain `ADD COLUMN`).
+- Tests: models match migrations, every table STRICT, downgrade/upgrade round trip, swipe/saved join, constraints reject bad rows.
+- Mutation checks: model column without migration, `saved` not STRICT, no FK, no action CHECK, no status CHECK → all caught. The action-CHECK mutation first passed: the test reused `swipe_id` `s1` and failed on the primary key instead; fixed with a distinct id.
+- Dev DB upgraded to `0003`.
+- Mandatory `.md` recheck before commit (new user rule): fixed `findings.md` (current state, resources), `task_plan.md` (errors table, skeleton item), `PROJECT_PLAN.md` (`next_attempt_at` NULL = due now). Committed and pushed.
+- Files created/modified: `backend/src/swipe_rss/models.py`, `backend/alembic/versions/0003_swipes_saved.py` (new), `backend/tests/{test_db,test_migrations}.py`, `backend/tests/README.md`, `PROJECT_PLAN.md`, plan files
 
 ## Test Results
 
@@ -140,6 +151,9 @@
 | Ingest caps + migration tests | `uv run pytest` | all pass | 42 passed | pass |
 | Ingest-cap mutation checks | limit > spec ×2, long link kept, key from dropped link | tests fail | all 4 caught | pass |
 | Migration 0002 on dev DB | `alembic upgrade head`, data hash before/after | no change (all within limits) | unchanged, version 0002 | pass |
+| Migration 0003 tests | `uv run pytest` | all pass | 49 passed | pass |
+| 0003 mutation checks | 5 schema sabotages | each caught | all caught (after fixing a false-positive test) | pass |
+| Migration 0003 on dev DB | `alembic upgrade head` | tables STRICT, items intact | version 0003, all STRICT, 58 items | pass |
 
 ## Error Log
 
@@ -148,13 +162,14 @@
 | 2026-10-02 | nginx: bind() to 0.0.0.0:443 failed (98: Address already in use) | 1 | Serve holds 443 on the Tailscale IP; moved RSS to Serve :8443 |
 | 2026-10-02 | mekomit: 403 Forbidden (Cloudflare challenge) from server | 1 | Datacenter-IP block; feed commented out |
 | 2026-10-03 | `--check` mutation test reported exit 0 on a stale spec | 1 | My measurement error: `$?` came from `tail` in a pipe; re-run without the pipe gave exit 1 |
+| 2026-10-03 | Constraint test passed with the action CHECK removed | 1 | Test reused an existing `swipe_id`, so the insert failed on the PK; fixed with a distinct id, mutation now caught |
 
 ## 5-Question Reboot Check
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps done; next: migration `0003` (swipes/saved) |
+| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003` done; next: FastAPI app skeleton |
 | Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |
-| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002` |
+| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved) |

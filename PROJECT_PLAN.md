@@ -177,7 +177,7 @@ Rule: **item properties are captured at swipe time** (items are pruned, so anyth
 - **Save for later:** extracted **shortly after save**, so saved items survive pages disappearing, changing, or going behind a paywall within the two-week window.
   - The swipe is recorded immediately; extraction never runs inside the request.
   - **One `saved` row per article:** primary key `(feed_id, item_key)`; a repeated save of the same article (`ON CONFLICT DO NOTHING`) adds nothing. The row references the save swipe (`swipe_id` → `swipes`), and headline, link etc. come from that swipe's snapshot rather than being copied, so saving works even if the `items` row is already pruned (late offline sync).
-  - **DB as queue:** `saved` rows carry `extraction_status` (pending / done / failed), `attempts`, `last_error`, `next_attempt_at` (schedules the backoff). A scheduler-container job runs **every minute** and processes pending rows that are due.
+  - **DB as queue:** `saved` rows carry `extraction_status` (pending / done / failed), `attempts`, `last_error`, `next_attempt_at` (schedules the backoff; `NULL` = due now). A scheduler-container job runs **every minute** and processes pending rows that are due.
   - **Retries:** up to 3 attempts with increasing backoff, then `failed`. The app shows "couldn't extract — open original" and falls back to Custom Tabs.
   - Known limitation: trafilatura can't reliably detect paywalls; a paywalled page may "succeed" with teaser text only.
 - **SSRF guard** (extraction fetches URLs from third-party feed content and client snapshots): allow only `http`/`https`; resolve DNS and refuse loopback, private, link-local, and Tailscale (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) addresses, re-checking after every redirect; enforce a timeout and a max response size.
@@ -233,8 +233,8 @@ Rule: **item properties are captured at swipe time** (items are pruned, so anyth
 
 - **feed_status:** per-feed fetch state, conditional-GET headers, last successful fetch, last new item, last error.
 - **items:** fetched articles (subject to retention); nullable `swiped_at` flags swiped items, which leave the queue but stay until pruned.
-- **swipes:** permanent swipe log; see "Swipe log fields" in §3. Item identity `(feed_id, item_key)`.
-- **saved:** read-later entries, one per `(feed_id, item_key)`, referencing the save swipe (`swipe_id`); extracted content (`text`, `extracted_at`) and extraction state (`extraction_status`, `attempts`, `last_error`, `next_attempt_at`), nullable `read_at`.
+- **swipes:** permanent swipe log; see "Swipe log fields" in §3. Item identity `(feed_id, item_key)` (indexed). `action` and `saved.extraction_status` are limited by CHECK constraints.
+- **saved:** read-later entries, one per `(feed_id, item_key)`, referencing the save swipe (`swipe_id`, foreign key); extracted content (`text`, `extracted_at`) and extraction state (`extraction_status`, `attempts`, `last_error`, `next_attempt_at`), nullable `read_at`.
 - **tombstones:** seen `(feed_id, key)` dedup keys with first-seen timestamps (~90 days), written at insert time.
 
 Feed definitions themselves live in the feeds file, not the database.

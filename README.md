@@ -26,7 +26,7 @@ Everything runs over Tailscale, a private WireGuard network; nothing is exposed 
     ├── pyproject.toml       dependencies, ruff, pytest, model generator config
     ├── Dockerfile           image for all backend services
     ├── crontab              schedule run by supercronic in the scheduler container
-    ├── alembic/             database migrations (SQLite)
+    ├── alembic/             database migrations (SQLite): 0001 baseline, 0002 cap items, 0003 swipes/saved
     ├── src/swipe_rss/
     │   ├── cli.py           `swipe-rss` command (e.g. `swipe-rss fetch`)
     │   ├── config.py        settings from environment variables
