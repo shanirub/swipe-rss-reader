@@ -207,3 +207,40 @@ def test_dropped_link_still_keys_the_item():
     [item] = fetcher.parse_entries(feed, rss({"title": "t", "link": long_link}), {})
     assert item.link is None
     assert item.dedup_key == dedup_key(guid=None, link=long_link, title="t", published=None)
+
+
+def test_redirects_are_followed(engine):
+    def handler(request):
+        if request.url.path == "/feed":
+            return httpx.Response(301, headers={"Location": "https://a.example/moved"})
+        return httpx.Response(200, content=rss(RECENT))
+
+    summary = run(engine, feeds_file("a"), handler)
+    assert summary.failed == 0 and summary.new_items == 1
+
+
+def test_requests_identify_the_reader(engine):
+    seen = []
+
+    def handler(request):
+        seen.append(request.headers.get("user-agent"))
+        return httpx.Response(200, content=rss(RECENT))
+
+    run(engine, feeds_file("a"), handler)
+    assert seen == [fetcher.USER_AGENT]
+
+
+def test_missing_or_blank_author_is_none():
+    feed = Feed(id="a", url="https://a.example/feed")
+    items = fetcher.parse_entries(feed, rss({"title": "no author"}, {"title": "blank", "author": "   "}), {})
+    assert [i.author for i in items] == [None, None]
+
+
+def test_updated_date_is_used_when_there_is_no_published_date():
+    atom = (
+        b'<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>t</title><id>f</id>'
+        b"<updated>2026-10-03T06:00:00Z</updated><entry><title>Only updated</title><id>u1</id>"
+        b'<link href="https://a.example/u"/><updated>2026-10-03T06:00:00Z</updated></entry></feed>'
+    )
+    [item] = fetcher.parse_entries(Feed(id="a", url="https://a.example/feed"), atom, {})
+    assert item.published_at == datetime(2026, 10, 3, 6, 0, tzinfo=UTC)

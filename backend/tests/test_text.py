@@ -22,3 +22,7 @@ def test_truncate_boundary():
     assert truncate("abcde", 5) == "abcde"  # at the limit: unchanged
     assert truncate("abcdef", 5) == "abcd…"  # over: exactly max_chars, marked
     assert len(truncate("x" * 10_000, 1000)) == 1000
+
+
+def test_truncate_drops_whitespace_before_the_ellipsis():
+    assert truncate("word word", 6) == "word…"  # not "word …"

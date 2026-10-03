@@ -12,7 +12,7 @@ Endpoints, starting with `GET /queue` and `POST /swipes` (DB session wiring in t
 
 ## Current Phase
 
-Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth done; next endpoints)
+Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing done; next endpoints)
 
 ## Phases
 
@@ -51,6 +51,9 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 - [x] `swipes` / `saved` migration (`0003`), incl. `items.swiped_at` (2026-10-03)
 - [x] FastAPI app skeleton (2026-10-03): `fastapi`/`uvicorn` deps (`trafilatura` deferred to the extraction job); `api.create_app` factory; FastAPI's `/docs`, `/redoc`, `/openapi.json` off; `GET /health`; `.env.example`
 - [x] Bearer token auth (2026-10-03): app-level dependency + `PUBLIC_PATHS` allowlist, constant-time compare, fails closed without a ≥32-char token
+- [x] Mutation checks as a script (2026-10-03): `backend/scripts/mutants.py`, 17 curated mutants, all killed; documented in `backend/tests/README.md`
+- [x] mutmut adopted as an exploration tool (2026-10-03): `backend/scripts/run_mutmut.py`, config in `pyproject.toml`; gaps it found closed with tests (empty query params, golden dedup keys, redirects, User-Agent, missing author, updated-only date, truncation whitespace)
+- [ ] Triage the remaining mutmut survivors (133, mostly fetcher/api/models; many noise or equivalent) before finishing stage 2
 - [ ] Endpoints: queue, `POST /swipes`, saved list, extracted content, feed status
 - [ ] Log every `422` on `POST /swipes` (swipe_ids, errors, body) via an exception handler
 - [ ] Extraction job + SSRF guard (adds `trafilatura`)
@@ -101,7 +104,7 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 8. ~~mekomit (Cloudflare 403 from server IP)~~ → commented out with TODO, like the7eye.
 9. ~~Deploy step~~ → Claude runs the exact deploy command + read-only checks over Tailscale SSH, only after the user approves each deploy; everything else on the server stays with the user.
 10. ~~OpenAPI spec location~~ → `api/openapi.yaml`, hand-written, contract tests.
-11. **To discuss (before writing contract tests):** test coverage strategy: (a) must-fail tests (404 unknown endpoint, 405 wrong method, 401 token, 422 invalid body/params); (b) unknown fields: request bodies are strict (decided, `additionalProperties: false`); unknown query params still open (FastAPI ignores them by default); (c) route-set equality; (d) coverage meta-check: every documented (path, method, status) exercised at least once; (e) Schemathesis property-based + negative testing in stage 2 (4.29.0 declares Python 3.14; confirm in practice); (f) behavior tests from PROJECT_PLAN; (g) optional GitHub Actions CI running ruff + pytest; (h) Android-side conformance (stage 5); (i) with generated models, only per-response shape validation becomes redundant: must-fail tests still verify wiring (route uses the right model), status codes and error-body format, input outside Pydantic (malformed JSON, wrong content type, empty/oversized batch, huge body), and that the generator translated each constraint correctly.
+11. **To discuss (before writing contract tests):** test coverage strategy: (a) must-fail tests (404 unknown endpoint, 405 wrong method, 401 token, 422 invalid body/params); (b) unknown fields: request bodies are strict (decided, `additionalProperties: false`); unknown query params still open (FastAPI ignores them by default); (c) route-set equality; (d) coverage meta-check: every documented (path, method, status) exercised at least once; (e) Schemathesis property-based + negative testing in stage 2 (4.29.0 declares Python 3.14; confirm in practice); (f) behavior tests from PROJECT_PLAN; (g) optional GitHub Actions CI running ruff + pytest; (h) Android-side conformance (stage 5); (i) with generated models, only per-response shape validation becomes redundant: must-fail tests still verify wiring (route uses the right model), status codes and error-body format, input outside Pydantic (malformed JSON, wrong content type, empty/oversized batch, huge body), and that the generator translated each constraint correctly; (j) mutation testing: curated `scripts/mutants.py` exists (run it after changing guard tests); mutmut experiment (findings.md) ran the whole backend in ~6 s and found real gaps (blank query params in link normalization, no golden dedup-key test, fetcher redirects/User-Agent/missing author) plus noise. → Decided 2026-10-03: mutmut adopted as an exploration tool (`scripts/run_mutmut.py`, not a gate); gaps it found are fixed; remaining survivors to triage before finishing stage 2.
 12. ~~Generate Pydantic models?~~ → yes: `datamodel-code-generator`, committed output, freshness test (2026-10-03).
 
 ## Decisions Made
@@ -146,6 +149,9 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | Auth as app-level dependency with `PUBLIC_PATHS` allowlist; routes registered directly on the app | Secure by default (no route can forget auth); FastAPI 0.142 hides included routers' routes from `app.routes`, which tests must enumerate |
 | API fails closed without a ≥32-char `SWIPE_RSS_API_TOKEN` | A missing or weak token must never mean an open API |
 | `trafilatura` added with the extraction job, not the skeleton | Vertical slice; no unused dependency in the image |
+| Curated mutation checks in `backend/scripts/mutants.py`, each mutant naming the test that must kill it | Rerunnable proof that each guard test can fail; KILLED-OTHER catches tests passing for the wrong reason; STALE catches outdated snippets |
+| mutmut as an exploration tool (`scripts/run_mutmut.py`), not a gate; curated `mutants.py` stays the guard list | mutmut finds unknown gaps in seconds but its survivors need triage (noise, equivalent mutants); curated mutants prove specific rules |
+| Golden test pins exact dedup keys | Keys are permanent item identity; any change to the key function must be deliberate and come with a migration plan |
 | Phase 2 work on branch `phase2` | User request (2026-10-02) |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 
@@ -157,13 +163,14 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | mekomit fetch: `403 Forbidden` (Cloudflare challenge) on server only | 1 | Not fixable without evasion; feed commented out |
 | `--check` mutation test reported exit 0 on a stale spec (2026-10-03) | 1 | Measurement error: `$?` came from `tail` in a pipe; without the pipe exit 1 |
 | Constraint test passed with the action CHECK removed (2026-10-03) | 1 | Test reused an existing `swipe_id` (PK clash); fixed with a distinct id |
+| Suite failed after `mutants.py` with no source change (2026-10-03) | 1 | Stale `.pyc` from a same-length mutant restored within one second; script now uses a fresh `PYTHONPYCACHEPREFIX` per test run |
 | Route-auth test passed with an unprotected endpoint (2026-10-03) | 1 | FastAPI 0.142 `include_router` hides routes from `app.routes`, so the test enumerated nothing; redesigned (app-level auth, routes on the app, test asserts it sees `/health`) |
 
 ## Notes
 
 - Update phase status as work progresses: `pending` → `in_progress` → `complete`.
 - Re-read `PROJECT_PLAN.md` before each phase; don't re-open settled decisions.
-- Dev loop: edit on desktop → `cd backend && uv run ruff check . && uv run ruff format --check . && uv run pytest` → optional local `docker compose up --build` → **recheck all `.md` files** → commit + push → server `cd ~/swipe-rss-reader && git pull && docker compose up -d --build`.
+- Dev loop: edit on desktop → `cd backend && uv run ruff check . && uv run ruff format --check . && uv run pytest` → when guard tests or the code they protect changed: `uv run python scripts/mutants.py` → optional local `docker compose up --build` → **recheck all `.md` files** → commit + push → server `cd ~/swipe-rss-reader && git pull && docker compose up -d --build`.
 - **Mandatory before every commit (user rule, 2026-10-03): recheck all maintained `.md` files for stale or missing data**: `PROJECT_PLAN.md`, `task_plan.md`, `progress.md`, `findings.md`, `README.md`, `backend/tests/README.md`. Read them in full, compare with what changed, fix, then commit. It catches something nearly every time.
 - Deploy: Claude runs `cd ~/swipe-rss-reader && git pull && docker compose up -d --build` over Tailscale SSH **only after the user approves that deploy**, then read-only checks (`docker compose ps`, logs, read-only DB queries). Never edit files in the server checkout. Root, Tailscale and system changes go to the user. Note: `srub` is in group `docker` (root-equivalent).
 - Server facts: RSS API URL `https://my-first-server.porcupine-celsius.ts.net:8443` → `127.0.0.1:8001` (nothing listening until stage 2). DB in named volume `swipe-rss-reader_data` at `/data/swipe_rss.db`.

@@ -39,6 +39,9 @@ Everything runs over Tailscale, a private WireGuard network; nothing is exposed 
     │   ├── fetcher.py       fetch run: conditional GET → parse → filter → dedup → store
     │   ├── dedup.py         per-feed deduplication keys
     │   └── text.py          HTML → plain text, truncation
+    ├── scripts/
+    │   ├── mutants.py       curated mutation checks for the guard tests (see backend/tests/README.md)
+    │   └── run_mutmut.py    generated mutation testing with mutmut (see backend/tests/README.md)
     └── tests/               pytest suite, see backend/tests/README.md
 ```
 
@@ -53,6 +56,8 @@ cd backend
 uv run ruff check . && uv run ruff format --check . && uv run pytest   # lint + tests
 uv run datamodel-codegen                                                # regenerate API models after editing api/openapi.yaml
 SWIPE_RSS_API_TOKEN=... uv run uvicorn swipe_rss.api:create_app --factory --port 8001   # run the API locally
+uv run python scripts/mutants.py                                        # mutation checks: do the guard tests catch real bugs?
+uv run python scripts/run_mutmut.py                                     # generated mutation testing: find untested code (mutmut)
 docker compose up --build                                               # run the stack locally (from the repo root)
 ```
 

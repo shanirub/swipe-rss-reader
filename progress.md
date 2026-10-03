@@ -138,7 +138,26 @@
 - Mutation checks (6): auth removed, extra public path, routes hidden from enumeration, openapi left on, no min token length, token value not checked → all caught.
 - Smoke test on a real uvicorn server: as expected (findings.md).
 - Files created/modified: `backend/src/swipe_rss/api.py` (new), `backend/src/swipe_rss/config.py`, `backend/pyproject.toml`, `backend/uv.lock`, `backend/tests/test_api.py` (new), `.env.example` (new), `README.md`, `backend/tests/README.md`, `PROJECT_PLAN.md`, plan files
-- `.md` recheck before commit: fixed misplaced file list (again), `findings.md` current state + resources, `task_plan.md` checklist order, duplicate auth line in `PROJECT_PLAN.md`. Committed and pushed.
+- `.md` recheck before commit: fixed misplaced file list (again), `findings.md` current state + resources, `task_plan.md` checklist order, duplicate auth line in `PROJECT_PLAN.md`. Committed `9a586bf` and pushed.
+
+### Testing: mutation checks script + mutmut experiment
+
+- **Status:** complete
+- `backend/scripts/mutants.py`: documented script (what, how, what it checks / doesn't, how to read results), 17 curated mutants (db, text, fetcher limits, schema, API auth, spec freshness), each with the test expected to kill it. Baseline check, STALE detection, byte-for-byte restore check.
+- Run: 17/17 KILLED by the expected test, 8.4 s. Self-test of verdicts: SURVIVED, STALE, ERROR, KILLED-OTHER all reported correctly.
+- Bug found afterwards: the normal suite failed (`test_dropped_link_still_keys_the_item`) with no source change. Cause: stale `.pyc` from a same-length mutant restored within the same second (proved by comparing the pyc header with the source mtime/size). Fixed with a fresh `PYTHONPYCACHEPREFIX` per test run; now 27.6 s, project bytecode untouched, suite green right after a run.
+- mutmut 3.8.0 experiment on a scratch copy (findings.md): 637 mutants in 5.9 s; 72% score; found real test gaps plus noise. The user then decided to adopt it (next entry).
+- Docs: `backend/tests/README.md` (Mutation checks section), root `README.md` (tree + command).
+- Files created/modified: `backend/scripts/mutants.py` (new), `backend/tests/README.md`, `README.md`, plan files
+
+### Testing: close mutmut gaps + mutmut script
+
+- **Status:** complete
+- New tests: empty query parameter kept by `normalize_link`; golden dedup keys (all three rules); fetcher follows redirects, sends User-Agent, missing/blank author → None, Atom updated-only date used; `truncate` drops whitespace before `…`.
+- `backend/scripts/run_mutmut.py`: documented wrapper (what, how, checks/doesn't, how to triage), module filter, `--show` diffs, `--fresh`; summary table per module with score. `mutmut` 3.8.0 dev dependency; `[tool.mutmut]` config; `backend/mutants/` in `.gitignore`; `mutants`, `scripts` in `.dockerignore`.
+- Results: all targeted gap mutants killed; score 72% → 75%; 133 survivors left to triage (Phase 2 checklist). Curated `mutants.py` still 17/17; 72 tests pass; Docker image builds.
+- Files created/modified: `backend/scripts/run_mutmut.py` (new), `backend/tests/{test_dedup,test_fetcher,test_text}.py`, `backend/pyproject.toml`, `backend/uv.lock`, `backend/.dockerignore`, `.gitignore`, `backend/tests/README.md`, `README.md`, plan files
+- `.md` recheck before commit: fixed stale status lines in `progress.md`, `findings.md` current state + resources, `PROJECT_PLAN.md` tooling line, `task_plan.md` current phase + dev loop. Committed (with the mutation-checks script) and pushed.
 
 ## Test Results
 
@@ -168,6 +187,12 @@
 | API skeleton tests | `uv run pytest` | all pass | 65 passed (1 Starlette deprecation warning) | pass |
 | API mutation checks | 6 sabotages | each caught | all caught (after redesign; first route test was vacuous) | pass |
 | Real uvicorn smoke test | `/health`, `/docs`, `/openapi.json`, no token | 200 / 404 / 404 / refuses to start | as expected | pass |
+| Mutation checks script | `uv run python scripts/mutants.py` | 17/17 KILLED | 17/17 KILLED by expected test (27.6 s with isolated bytecode) | pass |
+| Suite right after a mutant run | `pytest` after `mutants.py` | all pass | first failed (stale pyc), after fix 65 passed | pass |
+| Mutation script verdict self-test | crafted SURVIVED/STALE/ERROR/KILLED-OTHER mutants | each reported correctly | all 4 correct | pass |
+| mutmut on all `src/` (scratch copy) | `mutmut run` | measure speed and score | 637 mutants, 5.9 s, 72% killed | info |
+| Gap tests | `uv run pytest` | all pass | 72 passed | pass |
+| mutmut after gap fixes | `scripts/run_mutmut.py --fresh` | targeted gap mutants killed | all killed; 75% score, 6.9 s | pass |
 
 ## Error Log
 
@@ -178,13 +203,14 @@
 | 2026-10-03 | `--check` mutation test reported exit 0 on a stale spec | 1 | My measurement error: `$?` came from `tail` in a pipe; re-run without the pipe gave exit 1 |
 | 2026-10-03 | Constraint test passed with the action CHECK removed | 1 | Test reused an existing `swipe_id`, so the insert failed on the PK; fixed with a distinct id, mutation now caught |
 | 2026-10-03 | Route-auth test passed with an unprotected endpoint added | 1 | FastAPI 0.142 hides included routes from `app.routes` → test enumerated nothing; redesigned auth (app-level + allowlist), test now asserts it sees `/health` |
+| 2026-10-03 | Suite failed after running `mutants.py`, no source change | 1 | Stale `.pyc` of a same-length mutant (mtime-seconds + size match); fresh `PYTHONPYCACHEPREFIX` per test run |
 
 ## 5-Question Reboot Check
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth done; next: endpoints (`/queue`, `/swipes`) |
+| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut) done; next: endpoints (`/queue`, `/swipes`) |
 | Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |
-| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth |
+| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found |

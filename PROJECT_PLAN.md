@@ -82,7 +82,7 @@ All networking happens over **Tailscale** (WireGuard-based private mesh VPN). No
 - **httpx** (async HTTP client) + **feedparser** (tolerant RSS/Atom parser). Fetching uses **conditional GET** (`ETag` / `If-Modified-Since`).
 - **SQLAlchemy 2.x** (ORM, **sync**) + **Alembic** (schema migrations; batch mode for SQLite). API endpoints that touch the DB are plain `def` (FastAPI runs them in its thread pool); aiosqlite would only wrap the sync driver in a thread, so async gains nothing with SQLite.
 - **trafilatura** for article text extraction.
-- Tooling: **uv** (package manager with lockfile), **pytest**, **ruff**.
+- Tooling: **uv** (package manager with lockfile), **pytest**, **ruff**. Mutation testing checks the tests themselves: a curated list of mutants for the guard tests (`backend/scripts/mutants.py`) and **mutmut** for discovering untested code (`backend/scripts/run_mutmut.py`, an exploration tool, not a gate). See `backend/tests/README.md`.
 
 ### Database
 

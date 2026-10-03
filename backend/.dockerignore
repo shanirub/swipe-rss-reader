@@ -6,3 +6,5 @@ tests
 .ruff_cache
 Dockerfile
 .dockerignore
+mutants
+scripts

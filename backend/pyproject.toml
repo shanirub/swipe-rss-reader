@@ -26,6 +26,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "datamodel-code-generator[ruff]>=0.83.0",
+    "mutmut>=3.8.0",
     "pytest>=9.1.1",
     "ruff>=0.16.10",
 ]
@@ -60,3 +61,16 @@ disable-timestamp = true
 formatters = ["ruff-check", "ruff-format"]
 custom-file-header = """# GENERATED from api/openapi.yaml by datamodel-codegen. Do not edit.
 # Regenerate: cd backend && uv run datamodel-codegen"""
+
+# mutmut (generated mutation testing), run via scripts/run_mutmut.py. It copies the code into
+# backend/mutants/ (git-ignored) and runs the tests there, so tests that locate repo files by
+# relative path can't work and are deselected.
+[tool.mutmut]
+source_paths = ["src/"]
+do_not_mutate = ["src/swipe_rss/api_models.py"]  # generated from the spec; its tests are in test_api_models.py
+also_copy = ["alembic/", "alembic.ini"]
+pytest_add_cli_args = [
+    "--deselect", "tests/test_api_models.py::test_generated_models_are_fresh",
+    "--deselect", "tests/test_feeds.py::test_repo_feeds_file_is_valid",
+    "-W", "ignore",
+]
