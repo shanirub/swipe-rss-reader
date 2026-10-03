@@ -73,6 +73,13 @@
   6. Queue endpoint: `limit`, stateless, phone dedups by `(feed_id, item_key)`.
   7. `api` Compose service added in Phase 2.
 - Created branch `phase2`; committed and pushed the design review.
+
+### Phase 2 design review, part 2 (2026-10-03)
+
+- Added Key Question 11: testing-coverage discussion (to do before contract tests).
+- Checked PyPI: datamodel-code-generator, openapi-core, schemathesis all declare Python 3.14.
+- Trial-generated Pydantic v2 models from a sample 3.1 spec (findings.md).
+- Decision 8: generate API models from the spec (committed file + freshness test).
 - Files modified: `PROJECT_PLAN.md`, `task_plan.md`, `findings.md`, `progress.md`
 
 ## Test Results

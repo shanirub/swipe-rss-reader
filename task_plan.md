@@ -46,6 +46,7 @@ Phase 2 (in progress: design review done, contract next)
 
 - [x] Design review (2026-10-02): item identity, swipe flag, `saved` design, contract approach, deploy rule, swipe-log completeness, queue semantics
 - [ ] OpenAPI contract first (`api/openapi.yaml`)
+- [ ] Generate API models from the spec + freshness test
 - [ ] `swipes` / `saved` migration
 - [ ] Endpoints: queue, `POST /swipes`, saved list, extracted content, feed status
 - [ ] Bearer token auth
@@ -93,6 +94,8 @@ Phase 2 (in progress: design review done, contract next)
 8. ~~mekomit (Cloudflare 403 from server IP)~~ → commented out with TODO, like the7eye.
 9. ~~Deploy step~~ → Claude runs the exact deploy command + read-only checks over Tailscale SSH, only after the user approves each deploy; everything else on the server stays with the user.
 10. ~~OpenAPI spec location~~ → `api/openapi.yaml`, hand-written, contract tests.
+11. **To discuss (before writing contract tests):** test coverage strategy: (a) must-fail tests (404 unknown endpoint, 405 wrong method, 401 token, 422 invalid body/params); (b) strict request bodies (`additionalProperties: false` / `extra="forbid"`) vs ignore unknown fields; (c) route-set equality; (d) coverage meta-check: every documented (path, method, status) exercised at least once; (e) Schemathesis property-based + negative testing in stage 2 (verify Python 3.14 support); (f) behavior tests from PROJECT_PLAN; (g) optional GitHub Actions CI running ruff + pytest; (h) Android-side conformance (stage 5); (i) with generated models, only per-response shape validation becomes redundant: must-fail tests still verify wiring (route uses the right model), status codes and error-body format, input outside Pydantic (malformed JSON, wrong content type, empty/oversized batch, huge body), and that the generator translated each constraint correctly.
+12. ~~Generate Pydantic models?~~ → yes: `datamodel-code-generator`, committed output, freshness test (2026-10-03).
 
 ## Decisions Made
 
@@ -119,6 +122,7 @@ Phase 2 (in progress: design review done, contract next)
 | Swipe log adds `fetched_at`, `tz_offset_minutes`, `app_version`; stage 6 logs reads permanently | Completeness check: data only available at swipe time is otherwise lost; impressions not needed in a swipe UI |
 | Queue endpoint: `limit`, stateless, phone dedups by `(feed_id, item_key)` | Server can't know what the phone holds (offline, unsynced swipes) |
 | `api` Compose service added in Phase 2, not Phase 4 | Stage 2 must be testable with `curl` over the tailnet |
+| Generate API Pydantic models from `api/openapi.yaml` (committed, freshness test) | Request/response shapes defined once; drift impossible while fresh; must-fail and route tests still required |
 | Phase 2 work on branch `phase2` | User request (2026-10-02) |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 
