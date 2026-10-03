@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-FastAPI app skeleton: add `fastapi`/`uvicorn`/`trafilatura` deps, app factory with FastAPI's `/docs` and `/openapi.json` disabled, `GET /health`, bearer-token auth. Before writing contract tests, hold the testing-coverage discussion (Key Question 11). Branch `phase2`.
+Endpoints, starting with `GET /queue` and `POST /swipes` (DB session wiring in the app, round-robin queue, idempotent batch insert, `items.swiped_at`, `saved` row on save, 422 logging). Before writing contract tests, hold the testing-coverage discussion (Key Question 11). Branch `phase2`.
 
 ## Current Phase
 
-Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003` done; next FastAPI app skeleton)
+Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth done; next endpoints)
 
 ## Phases
 
@@ -49,11 +49,11 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 - [x] Generate API models from the spec + freshness test (2026-10-03): `backend/src/swipe_rss/api_models.py`, config in `pyproject.toml`, `tests/test_api_models.py` uses `--check`
 - [x] Fetcher ingest caps = spec limits (headline 1000, author 500, tags 50×200, link 4096 → null) + test fetcher limits ≤ model limits; migration `0002` caps existing rows (2026-10-03)
 - [x] `swipes` / `saved` migration (`0003`), incl. `items.swiped_at` (2026-10-03)
-- [ ] FastAPI app skeleton: add `fastapi`/`uvicorn`/`trafilatura` deps; disable FastAPI's `/docs` and `/openapi.json` (the spec is the YAML); `GET /health`
+- [x] FastAPI app skeleton (2026-10-03): `fastapi`/`uvicorn` deps (`trafilatura` deferred to the extraction job); `api.create_app` factory; FastAPI's `/docs`, `/redoc`, `/openapi.json` off; `GET /health`; `.env.example`
+- [x] Bearer token auth (2026-10-03): app-level dependency + `PUBLIC_PATHS` allowlist, constant-time compare, fails closed without a ≥32-char token
 - [ ] Endpoints: queue, `POST /swipes`, saved list, extracted content, feed status
-- [ ] Bearer token auth
 - [ ] Log every `422` on `POST /swipes` (swipe_ids, errors, body) via an exception handler
-- [ ] Extraction job + SSRF guard
+- [ ] Extraction job + SSRF guard (adds `trafilatura`)
 - [ ] `api` Compose service on `127.0.0.1:8001`; deploy + `curl` over the tailnet
 - [ ] Contract + must-fail tests (strategy per Key Question 11); document the strategy in `backend/tests/README.md`
 - **Status:** in_progress
@@ -143,6 +143,9 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | `0003`: CHECK constraints on `swipes.action` and `saved.extraction_status`; FK `saved.swipe_id` → `swipes`; index `(feed_id, item_key)` on `swipes`; `saved.next_attempt_at` NULL = due now | The DB rejects invalid states itself; index serves "latest swipe per item" and queue removal |
 | Test: `models.py` matches the migrations (Alembic `compare_metadata`) | Code and schema can't silently drift |
 | Recheck all maintained `.md` files before every commit | User rule (2026-10-03): every recheck so far found stale or missing data |
+| Auth as app-level dependency with `PUBLIC_PATHS` allowlist; routes registered directly on the app | Secure by default (no route can forget auth); FastAPI 0.142 hides included routers' routes from `app.routes`, which tests must enumerate |
+| API fails closed without a ≥32-char `SWIPE_RSS_API_TOKEN` | A missing or weak token must never mean an open API |
+| `trafilatura` added with the extraction job, not the skeleton | Vertical slice; no unused dependency in the image |
 | Phase 2 work on branch `phase2` | User request (2026-10-02) |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 
@@ -154,6 +157,7 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | mekomit fetch: `403 Forbidden` (Cloudflare challenge) on server only | 1 | Not fixable without evasion; feed commented out |
 | `--check` mutation test reported exit 0 on a stale spec (2026-10-03) | 1 | Measurement error: `$?` came from `tail` in a pipe; without the pipe exit 1 |
 | Constraint test passed with the action CHECK removed (2026-10-03) | 1 | Test reused an existing `swipe_id` (PK clash); fixed with a distinct id |
+| Route-auth test passed with an unprotected endpoint (2026-10-03) | 1 | FastAPI 0.142 `include_router` hides routes from `app.routes`, so the test enumerated nothing; redesigned (app-level auth, routes on the app, test asserts it sees `/health`) |
 
 ## Notes
 

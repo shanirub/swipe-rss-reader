@@ -18,6 +18,7 @@ Everything runs over Tailscale, a private WireGuard network; nothing is exposed 
 ├── progress.md              session log, test results, errors
 ├── findings.md              research notes, server inventory
 ├── compose.yaml             Docker Compose: migrate + scheduler (API service from stage 2)
+├── .env.example             template for .env (API token); .env itself is never committed
 ├── api/
 │   └── openapi.yaml         API contract (OpenAPI 3.1), single source of truth for backend ↔ app
 ├── config/
@@ -28,6 +29,7 @@ Everything runs over Tailscale, a private WireGuard network; nothing is exposed 
     ├── crontab              schedule run by supercronic in the scheduler container
     ├── alembic/             database migrations (SQLite): 0001 baseline, 0002 cap items, 0003 swipes/saved
     ├── src/swipe_rss/
+    │   ├── api.py           HTTP API (FastAPI app factory, bearer-token auth)
     │   ├── cli.py           `swipe-rss` command (e.g. `swipe-rss fetch`)
     │   ├── config.py        settings from environment variables
     │   ├── db.py            SQLite engine: WAL, busy_timeout, BEGIN IMMEDIATE
@@ -50,6 +52,7 @@ All development happens on the desktop; the server only pulls committed code and
 cd backend
 uv run ruff check . && uv run ruff format --check . && uv run pytest   # lint + tests
 uv run datamodel-codegen                                                # regenerate API models after editing api/openapi.yaml
+SWIPE_RSS_API_TOKEN=... uv run uvicorn swipe_rss.api:create_app --factory --port 8001   # run the API locally
 docker compose up --build                                               # run the stack locally (from the repo root)
 ```
 

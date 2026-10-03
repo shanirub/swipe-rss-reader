@@ -126,8 +126,19 @@
 - Tests: models match migrations, every table STRICT, downgrade/upgrade round trip, swipe/saved join, constraints reject bad rows.
 - Mutation checks: model column without migration, `saved` not STRICT, no FK, no action CHECK, no status CHECK → all caught. The action-CHECK mutation first passed: the test reused `swipe_id` `s1` and failed on the primary key instead; fixed with a distinct id.
 - Dev DB upgraded to `0003`.
-- Mandatory `.md` recheck before commit (new user rule): fixed `findings.md` (current state, resources), `task_plan.md` (errors table, skeleton item), `PROJECT_PLAN.md` (`next_attempt_at` NULL = due now). Committed and pushed.
 - Files created/modified: `backend/src/swipe_rss/models.py`, `backend/alembic/versions/0003_swipes_saved.py` (new), `backend/tests/{test_db,test_migrations}.py`, `backend/tests/README.md`, `PROJECT_PLAN.md`, plan files
+- Mandatory `.md` recheck before commit (new user rule): fixed `findings.md` (current state, resources), `task_plan.md` (errors table, skeleton item), `PROJECT_PLAN.md` (`next_attempt_at` NULL = due now). Committed `66bb4b8` and pushed.
+
+### Phase 2: FastAPI app skeleton + auth
+
+- **Status:** complete
+- Added `fastapi` 0.142.2, `uvicorn` 0.54.0. `swipe_rss/api.py`: `create_app` factory, FastAPI docs/openapi off, `GET /health`, token check as app-level dependency with `PUBLIC_PATHS` allowlist, fails closed without a ≥32-char token. `config.api_token` from `SWIPE_RSS_API_TOKEN`; `.env.example`.
+- First design (protected `APIRouter`) had a vacuous route test: FastAPI 0.142 hides included routes from `app.routes`. Found by mutation check; redesigned.
+- Tests (`test_api.py`): health public, docs off, refuses weak/missing token, only `/health` public, every other route needs the token (asserts the enumeration sees `/health`), later-included routers protected, bad credentials → 401 with `WWW-Authenticate` and spec `Error` body, correct token passes.
+- Mutation checks (6): auth removed, extra public path, routes hidden from enumeration, openapi left on, no min token length, token value not checked → all caught.
+- Smoke test on a real uvicorn server: as expected (findings.md).
+- Files created/modified: `backend/src/swipe_rss/api.py` (new), `backend/src/swipe_rss/config.py`, `backend/pyproject.toml`, `backend/uv.lock`, `backend/tests/test_api.py` (new), `.env.example` (new), `README.md`, `backend/tests/README.md`, `PROJECT_PLAN.md`, plan files
+- `.md` recheck before commit: fixed misplaced file list (again), `findings.md` current state + resources, `task_plan.md` checklist order, duplicate auth line in `PROJECT_PLAN.md`. Committed and pushed.
 
 ## Test Results
 
@@ -154,6 +165,9 @@
 | Migration 0003 tests | `uv run pytest` | all pass | 49 passed | pass |
 | 0003 mutation checks | 5 schema sabotages | each caught | all caught (after fixing a false-positive test) | pass |
 | Migration 0003 on dev DB | `alembic upgrade head` | tables STRICT, items intact | version 0003, all STRICT, 58 items | pass |
+| API skeleton tests | `uv run pytest` | all pass | 65 passed (1 Starlette deprecation warning) | pass |
+| API mutation checks | 6 sabotages | each caught | all caught (after redesign; first route test was vacuous) | pass |
+| Real uvicorn smoke test | `/health`, `/docs`, `/openapi.json`, no token | 200 / 404 / 404 / refuses to start | as expected | pass |
 
 ## Error Log
 
@@ -163,13 +177,14 @@
 | 2026-10-02 | mekomit: 403 Forbidden (Cloudflare challenge) from server | 1 | Datacenter-IP block; feed commented out |
 | 2026-10-03 | `--check` mutation test reported exit 0 on a stale spec | 1 | My measurement error: `$?` came from `tail` in a pipe; re-run without the pipe gave exit 1 |
 | 2026-10-03 | Constraint test passed with the action CHECK removed | 1 | Test reused an existing `swipe_id`, so the insert failed on the PK; fixed with a distinct id, mutation now caught |
+| 2026-10-03 | Route-auth test passed with an unprotected endpoint added | 1 | FastAPI 0.142 hides included routes from `app.routes` → test enumerated nothing; redesigned auth (app-level + allowlist), test now asserts it sees `/health` |
 
 ## 5-Question Reboot Check
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003` done; next: FastAPI app skeleton |
+| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth done; next: endpoints (`/queue`, `/swipes`) |
 | Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |
-| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved) |
+| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth |
