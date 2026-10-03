@@ -55,7 +55,7 @@ Phase 2 (in progress: design, spec, generated models, ingest caps done; next mig
 - [ ] Log every `422` on `POST /swipes` (swipe_ids, errors, body) via an exception handler
 - [ ] Extraction job + SSRF guard
 - [ ] `api` Compose service on `127.0.0.1:8001`; deploy + `curl` over the tailnet
-- [ ] Contract + must-fail tests (strategy per Key Question 11)
+- [ ] Contract + must-fail tests (strategy per Key Question 11); document the strategy in `backend/tests/README.md`
 - **Status:** in_progress
 
 ### Phase 3: Retention (stage 3)
@@ -138,6 +138,8 @@ Phase 2 (in progress: design, spec, generated models, ingest caps done; next mig
 | API conventions: unauthenticated fixed `/health`; wrapped list responses; content endpoint always 200 for saved items; required-but-nullable fields; new request fields optional | Recorded in PROJECT_PLAN §3 Repository |
 | Dedup key from the full title/link, card fields capped separately | Identity must not change because of a display limit |
 | Data migrations copy their constants instead of importing app code | A migration must keep doing what it did when written |
+| Root `README.md` links to `PROJECT_PLAN.md` + `task_plan.md` for status instead of stating it | A hardcoded status line would go stale with every commit |
+| `backend/tests/README.md` documents every test file and the test strategy; update it when tests are added | Keeps the test suite understandable; the API contract-test strategy (Key Question 11) gets added there once decided |
 | Phase 2 work on branch `phase2` | User request (2026-10-02) |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 

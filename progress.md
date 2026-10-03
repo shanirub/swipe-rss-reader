@@ -108,8 +108,15 @@
 - `text.truncate()` shared helper; fetcher caps headline 1000, author 500 (stripped), tags 50×200; link > 4096 → `null`. Dedup key uses the full title and link.
 - Migration `0002_cap_items`: caps rows stored before the limits (constants copied, downgrade no-op). Ran on local dev DB: 58 items unchanged (all within limits).
 - Tests: limits ≤ generated model limits, oversized entry → valid `Card`, dropped link still keys the item, `truncate` boundary, migration caps old rows and leaves valid rows untouched. Mutation-checked 4 sabotages (all caught).
-- Committed with the plan recheck (see below).
+- Committed with the plan recheck as `aa2e70d` and pushed.
 - Files created/modified: `backend/src/swipe_rss/{fetcher,text}.py`, `backend/alembic/versions/0002_cap_items.py` (new), `backend/tests/{conftest,test_fetcher,test_text}.py`, `backend/tests/test_migrations.py` (new), plan files
+
+### Docs: READMEs
+
+- **Status:** complete
+- Root `README.md`: short description, links to `PROJECT_PLAN.md` (design, stages) and `task_plan.md` (live status), repo structure, dev commands.
+- `backend/tests/README.md`: test strategy (real SQLite + migrations, no network, guarantee tests, mutation checks) and what each test file covers; contract-test strategy pending (Key Question 11). Test descriptions checked against the test code.
+- Files created/modified: `README.md` (new), `backend/tests/README.md` (new), `task_plan.md`, `findings.md`, `progress.md`
 
 ## Test Results
 

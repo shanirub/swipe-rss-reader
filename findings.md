@@ -94,7 +94,9 @@ Initial snapshot; lines marked → were changed later in stage 0 (see Current st
 
 ## Resources
 
+- `README.md` — project overview and repo structure (entry point for readers)
 - `PROJECT_PLAN.md` — design source of truth
+- `backend/tests/README.md` — test strategy and what each test file covers
 - `api/openapi.yaml` — API contract (OpenAPI 3.1); API Pydantic models are generated from it
 - `config/feeds.toml` — feed definitions
 - `tech_privacy_rss_feeds.md` — original feed list (user's notes)
