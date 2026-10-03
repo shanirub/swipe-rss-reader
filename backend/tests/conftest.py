@@ -32,7 +32,8 @@ def engine(db_path):
 
 
 def rss(*entries: dict) -> bytes:
-    """Minimal RSS 2.0 document. Entry keys: title, link, guid, published (datetime), description."""
+    """Minimal RSS 2.0 document. Entry keys: title, link, guid, published (datetime), description,
+    author, categories (list of str)."""
     items = []
     for e in entries:
         parts = [f"<title>{e['title']}</title>"]
@@ -45,6 +46,9 @@ def rss(*entries: dict) -> bytes:
             parts.append(f"<pubDate>{format_datetime(published)}</pubDate>")
         if "description" in e:
             parts.append(f"<description><![CDATA[{e['description']}]]></description>")
+        if "author" in e:
+            parts.append(f"<author>{e['author']}</author>")
+        parts.extend(f"<category>{c}</category>" for c in e.get("categories", []))
         items.append(f"<item>{''.join(parts)}</item>")
     return (
         '<?xml version="1.0"?><rss version="2.0"><channel><title>t</title><link>https://example.com/</link>'

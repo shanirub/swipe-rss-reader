@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Fetcher ingest caps = spec limits (headline 1000, author 500, tags 50×200, link 4096 → null) plus a test that fetcher limits ≤ the generated models' limits. Before writing contract tests, hold the testing-coverage discussion (Key Question 11). Branch `phase2`.
+Migration `0003`: `swipes` and `saved` tables plus nullable `items.swiped_at` (PROJECT_PLAN §3 Swipe log fields, Swipe recording, Content extraction; §4). Before writing contract tests, hold the testing-coverage discussion (Key Question 11). Branch `phase2`.
 
 ## Current Phase
 
-Phase 2 (in progress: design + spec done, implementation next)
+Phase 2 (in progress: design, spec, generated models, ingest caps done; next migration `0003`)
 
 ## Phases
 
@@ -47,8 +47,9 @@ Phase 2 (in progress: design + spec done, implementation next)
 - [x] Design review (2026-10-02): item identity, swipe flag, `saved` design, contract approach, deploy rule, swipe-log completeness, queue semantics
 - [x] OpenAPI contract `api/openapi.yaml` drafted, reviewed (ingest caps, invalid swipes/dead letters, nested card, API conventions), validated (2026-10-03)
 - [x] Generate API models from the spec + freshness test (2026-10-03): `backend/src/swipe_rss/api_models.py`, config in `pyproject.toml`, `tests/test_api_models.py` uses `--check`
-- [ ] Fetcher ingest caps = spec limits (headline 1000, author 500, tags 50×200, link 4096 → null) + test fetcher limits ≤ model limits; migration caps existing rows
-- [ ] `swipes` / `saved` migration
+- [x] Fetcher ingest caps = spec limits (headline 1000, author 500, tags 50×200, link 4096 → null) + test fetcher limits ≤ model limits; migration `0002` caps existing rows (2026-10-03)
+- [ ] `swipes` / `saved` migration (`0003`), incl. `items.swiped_at`
+- [ ] FastAPI app skeleton: add `fastapi`/`uvicorn`/`trafilatura` deps; disable FastAPI's `/docs` and `/openapi.json` (the spec is the YAML)
 - [ ] Endpoints: queue, `POST /swipes`, saved list, extracted content, feed status
 - [ ] Bearer token auth
 - [ ] Log every `422` on `POST /swipes` (swipe_ids, errors, body) via an exception handler
@@ -117,7 +118,7 @@ Phase 2 (in progress: design + spec done, implementation next)
 | Fetch every 15 min | Conditional GET keeps it cheap; easy to change in `backend/crontab` |
 | One-shot `migrate` Compose service | Avoids migration races once the API container exists |
 | Python 3.14 | Matches desktop; container uses python:3.14-slim |
-| Summaries capped at 2000 chars; entries without a title skipped | Card text, not full articles; untitled entries can't be shown |
+| Summaries capped at 2000 chars (since 2026-10-03 all card fields, see card-limits row); entries without a title skipped | Card text, not full articles; untitled entries can't be shown |
 | Drop deploy key | Public repo: anonymous HTTPS clone, no secret on server |
 | Disable OpenSSH (ssh.socket) | Tailscale SSH used; server has public IPv6 we can't probe; Hetzner console is fallback |
 | Item identity `(feed_id, item_key)`; `item_key` = `items.dedup_key`, in queue response and swipe log | Needed for "latest swipe per item wins" and queue removal; rowid can be reused after pruning (decided 2026-10-02, PROJECT_PLAN §3 Swipe recording) |
@@ -135,6 +136,8 @@ Phase 2 (in progress: design + spec done, implementation next)
 | Dead letters: server logs 422s (stage 2); phone retries on app update + debug retry/export (stage 5); lenient upload endpoint only if needed (stage 8) | Rejections are noticed and never permanently lost, without loosening the strict contract |
 | Swipe JSON nests `card` (= queue object); `swipes` table flat | `Card` schema and its limits defined once |
 | API conventions: unauthenticated fixed `/health`; wrapped list responses; content endpoint always 200 for saved items; required-but-nullable fields; new request fields optional | Recorded in PROJECT_PLAN §3 Repository |
+| Dedup key from the full title/link, card fields capped separately | Identity must not change because of a display limit |
+| Data migrations copy their constants instead of importing app code | A migration must keep doing what it did when written |
 | Phase 2 work on branch `phase2` | User request (2026-10-02) |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 

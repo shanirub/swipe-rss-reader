@@ -31,11 +31,16 @@ class _TextExtractor(HTMLParser):
             self.parts.append(data)
 
 
+def truncate(text: str, max_chars: int) -> str:
+    """Cut to at most `max_chars` characters, marking the cut with "…"."""
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 1].rstrip() + "…"
+
+
 def html_to_text(html: str, max_chars: int | None = None) -> str:
     parser = _TextExtractor()
     parser.feed(html)
     parser.close()
     text = _WS.sub(" ", "".join(parser.parts)).strip()
-    if max_chars is not None and len(text) > max_chars:
-        text = text[: max_chars - 1].rstrip() + "…"
-    return text
+    return truncate(text, max_chars) if max_chars is not None else text

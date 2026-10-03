@@ -1,4 +1,4 @@
-from swipe_rss.text import html_to_text
+from swipe_rss.text import html_to_text, truncate
 
 
 def test_strips_tags_and_unescapes():
@@ -16,3 +16,9 @@ def test_truncates():
 
 def test_plain_text_passthrough():
     assert html_to_text("already plain") == "already plain"
+
+
+def test_truncate_boundary():
+    assert truncate("abcde", 5) == "abcde"  # at the limit: unchanged
+    assert truncate("abcdef", 5) == "abcd…"  # over: exactly max_chars, marked
+    assert len(truncate("x" * 10_000, 1000)) == 1000
