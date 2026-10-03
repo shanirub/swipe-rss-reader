@@ -90,6 +90,16 @@
 - Spec review point 3 decided: swipe nests `card`.
 - Spec review point 4 decided: API conventions (`/health` without auth, wrapped lists, content always 200, required-but-nullable, new request fields optional, Kotlin `encodeDefaults` note).
 - Rechecked all planning files and `PROJECT_PLAN.md` for stale data; committed spec + plan updates.
+- Pushed `phase2`.
+
+### Phase 2: generate API models
+
+- **Status:** complete
+- Added `datamodel-code-generator[ruff]` 0.83.0 as dev dependency; config in `[tool.datamodel-codegen]`; generated `src/swipe_rss/api_models.py`.
+- Spec: renamed schema `ValidationError` → `HTTPValidationError`.
+- `tests/test_api_models.py`: freshness via `--check`; mutation-checked (stale spec → fails, restored → passes).
+- Docker image builds; models import; generator not in image.
+- Files created/modified: `backend/pyproject.toml`, `backend/uv.lock`, `backend/src/swipe_rss/api_models.py` (new), `backend/tests/test_api_models.py` (new), `api/openapi.yaml`, `PROJECT_PLAN.md`, planning files
 - Files created/modified: `api/openapi.yaml` (new), `PROJECT_PLAN.md`, `task_plan.md`, `findings.md`, `progress.md`
 
 ## Test Results
@@ -108,6 +118,9 @@
 | Docker loopback publish | nginx:alpine on 127.0.0.1:8001 | 200 on loopback only | 200, bound 127.0.0.1 | pass |
 | OpenAPI spec valid | `openapi-spec-validator api/openapi.yaml` | OK | OK | pass |
 | Models generate from spec | `datamodel-codegen` (scratchpad) | clean Pydantic v2 models | clean; RootModel wrappers for shared types | pass |
+| Backend tests after model generation | `uv run pytest` | all pass | 37 passed | pass |
+| Freshness test mutation check | spec `maxLength` 1000 → 999 | test fails | fails with regenerate hint; passes after revert | pass |
+| Docker image | `docker compose build scheduler`; import models | builds, imports, no generator | as expected | pass |
 
 ## Error Log
 
@@ -120,7 +133,7 @@
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phases 0–1 complete; Phase 2: design + `api/openapi.yaml` done on branch `phase2`; next: generate API models |
+| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; next: fetcher ingest caps |
 | Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |

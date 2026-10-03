@@ -195,7 +195,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ValidationError"
+            $ref: "#/components/schemas/HTTPValidationError"
 
   schemas:
     # --- shared value types ---
@@ -428,7 +428,7 @@ components:
         detail:
           type: string
 
-    ValidationError:
+    HTTPValidationError:
       type: object
       required: [detail]
       properties:

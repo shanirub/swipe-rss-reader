@@ -8,7 +8,7 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Generate the API models from `api/openapi.yaml`: add `datamodel-code-generator[ruff]` as a pinned dev dependency, generate into `backend/src/swipe_rss/api_models.py` (try `--collapse-root-models`), add the freshness test. Before writing contract tests, hold the testing-coverage discussion (Key Question 11). Branch `phase2`.
+Fetcher ingest caps = spec limits (headline 1000, author 500, tags 50×200, link 4096 → null) plus a test that fetcher limits ≤ the generated models' limits. Before writing contract tests, hold the testing-coverage discussion (Key Question 11). Branch `phase2`.
 
 ## Current Phase
 
@@ -46,7 +46,7 @@ Phase 2 (in progress: design + spec done, implementation next)
 
 - [x] Design review (2026-10-02): item identity, swipe flag, `saved` design, contract approach, deploy rule, swipe-log completeness, queue semantics
 - [x] OpenAPI contract `api/openapi.yaml` drafted, reviewed (ingest caps, invalid swipes/dead letters, nested card, API conventions), validated (2026-10-03)
-- [ ] Generate API models from the spec + freshness test
+- [x] Generate API models from the spec + freshness test (2026-10-03): `backend/src/swipe_rss/api_models.py`, config in `pyproject.toml`, `tests/test_api_models.py` uses `--check`
 - [ ] Fetcher ingest caps = spec limits (headline 1000, author 500, tags 50×200, link 4096 → null) + test fetcher limits ≤ model limits; migration caps existing rows
 - [ ] `swipes` / `saved` migration
 - [ ] Endpoints: queue, `POST /swipes`, saved list, extracted content, feed status

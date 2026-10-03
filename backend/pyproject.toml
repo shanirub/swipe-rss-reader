@@ -23,6 +23,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "datamodel-code-generator[ruff]>=0.83.0",
     "pytest>=9.1.1",
     "ruff>=0.16.10",
 ]
@@ -38,3 +39,22 @@ known-third-party = ["alembic"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# API (wire) models generated from the OpenAPI contract. Regenerate after editing the spec:
+#   uv run datamodel-codegen
+# tests/test_api_models.py fails if the committed file is stale.
+[tool.datamodel-codegen]
+input = "../api/openapi.yaml"
+input-file-type = "openapi"
+output = "src/swipe_rss/api_models.py"
+output-model-type = "pydantic_v2.BaseModel"
+target-python-version = "3.14"
+use-annotated = true
+field-constraints = true
+use-standard-collections = true
+use-union-operator = true
+collapse-root-models = true
+disable-timestamp = true
+formatters = ["ruff-check", "ruff-format"]
+custom-file-header = """# GENERATED from api/openapi.yaml by datamodel-codegen. Do not edit.
+# Regenerate: cd backend && uv run datamodel-codegen"""

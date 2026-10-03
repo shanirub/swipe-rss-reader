@@ -70,6 +70,8 @@ Initial snapshot; lines marked → were changed later in stage 0 (see Current st
 
 - Draft `api/openapi.yaml` (2026-10-03): passes `openapi-spec-validator`; `datamodel-codegen` generates clean models. Shared value types (`FeedId`, `ItemKey`, tag strings) become `RootModel` wrappers (access via `.root`); try `--collapse-root-models` when wiring up. Formatting needs `datamodel-code-generator[ruff]` (otherwise unformatted output + warning).
 
+- Model generation (2026-10-03, datamodel-code-generator 0.83.0): options read from `[tool.datamodel-codegen]` in `pyproject.toml` (made with `--generate-pyproject-config`); built-in `--check` exits 1 if the output file is stale (verified both ways), so the freshness test needs no temp-dir diff. `--disable-timestamp` keeps output stable. `--collapse-root-models` inlines `FeedId`/`ItemKey`, but array item types stay `RootModel` wrappers: `Card.tags` is `list[Tag]`, so Python code reads `tag.root` (JSON is plain strings). Schema renamed `ValidationError` → `HTTPValidationError` to avoid shadowing `pydantic.ValidationError`. Generated file passes ruff (formatters `ruff-check`, `ruff-format`). Docker image (`--no-dev`) imports the models without the generator.
+
 ## Technical Decisions
 
 | Decision | Rationale |
