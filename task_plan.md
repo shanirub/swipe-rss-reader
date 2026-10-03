@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Write `api/openapi.yaml` (OpenAPI 3.1) from `PROJECT_PLAN.md` §3 (Swipe log fields, Swipe recording, Content extraction, Queue ordering, API auth) and review it with the user before any endpoint code. Work happens on branch `phase2`.
+Generate the API models from `api/openapi.yaml`: add `datamodel-code-generator[ruff]` as a pinned dev dependency, generate into `backend/src/swipe_rss/api_models.py` (try `--collapse-root-models`), add the freshness test. Before writing contract tests, hold the testing-coverage discussion (Key Question 11). Branch `phase2`.
 
 ## Current Phase
 
-Phase 2 (in progress: design review done, contract next)
+Phase 2 (in progress: design + spec done, implementation next)
 
 ## Phases
 
@@ -45,19 +45,21 @@ Phase 2 (in progress: design review done, contract next)
 ### Phase 2: API (stage 2)
 
 - [x] Design review (2026-10-02): item identity, swipe flag, `saved` design, contract approach, deploy rule, swipe-log completeness, queue semantics
-- [ ] OpenAPI contract first (`api/openapi.yaml`)
+- [x] OpenAPI contract `api/openapi.yaml` drafted, reviewed (ingest caps, invalid swipes/dead letters, nested card, API conventions), validated (2026-10-03)
 - [ ] Generate API models from the spec + freshness test
+- [ ] Fetcher ingest caps = spec limits (headline 1000, author 500, tags 50×200, link 4096 → null) + test fetcher limits ≤ model limits; migration caps existing rows
 - [ ] `swipes` / `saved` migration
 - [ ] Endpoints: queue, `POST /swipes`, saved list, extracted content, feed status
 - [ ] Bearer token auth
+- [ ] Log every `422` on `POST /swipes` (swipe_ids, errors, body) via an exception handler
 - [ ] Extraction job + SSRF guard
 - [ ] `api` Compose service on `127.0.0.1:8001`; deploy + `curl` over the tailnet
-- [ ] Contract tests (route set + request/response validation against the spec)
+- [ ] Contract + must-fail tests (strategy per Key Question 11)
 - **Status:** in_progress
 
 ### Phase 3: Retention (stage 3)
 
-- [ ] Pruning job: unswiped, saved, tombstone expiry
+- [ ] Pruning job: unswiped, swiped (`items.swiped_at`), saved, tombstone expiry
 - **Status:** pending
 
 ### Phase 4: Deployment & backups (stage 4)
@@ -68,10 +70,13 @@ Phase 2 (in progress: design review done, contract next)
 
 ### Phase 5: Android MVP (stage 5)
 
+- [ ] kotlinx.serialization sends nulls/defaults (`encodeDefaults = true`), so required-but-nullable fields are never dropped
+- [ ] Swipe sync: single-swipe fallback on `422`; dead-letter store (with `app_version` + error), retry once on new app version, debug screen with retry/export
 - **Status:** pending
 
 ### Phase 6: Read-later view (stage 6)
 
+- [ ] Log opening a saved item as a permanent, append-only event (not only `saved.read_at`)
 - **Status:** pending
 
 ### Phase 7: Ranking (stage 7)
@@ -80,6 +85,7 @@ Phase 2 (in progress: design review done, contract next)
 
 ### Phase 8: Iterate (stage 8)
 
+- [ ] Lenient `POST /dead-letters` + import command, only if dead letters occur
 - **Status:** pending
 
 ## Key Questions
@@ -94,7 +100,7 @@ Phase 2 (in progress: design review done, contract next)
 8. ~~mekomit (Cloudflare 403 from server IP)~~ → commented out with TODO, like the7eye.
 9. ~~Deploy step~~ → Claude runs the exact deploy command + read-only checks over Tailscale SSH, only after the user approves each deploy; everything else on the server stays with the user.
 10. ~~OpenAPI spec location~~ → `api/openapi.yaml`, hand-written, contract tests.
-11. **To discuss (before writing contract tests):** test coverage strategy: (a) must-fail tests (404 unknown endpoint, 405 wrong method, 401 token, 422 invalid body/params); (b) strict request bodies (`additionalProperties: false` / `extra="forbid"`) vs ignore unknown fields; (c) route-set equality; (d) coverage meta-check: every documented (path, method, status) exercised at least once; (e) Schemathesis property-based + negative testing in stage 2 (verify Python 3.14 support); (f) behavior tests from PROJECT_PLAN; (g) optional GitHub Actions CI running ruff + pytest; (h) Android-side conformance (stage 5); (i) with generated models, only per-response shape validation becomes redundant: must-fail tests still verify wiring (route uses the right model), status codes and error-body format, input outside Pydantic (malformed JSON, wrong content type, empty/oversized batch, huge body), and that the generator translated each constraint correctly.
+11. **To discuss (before writing contract tests):** test coverage strategy: (a) must-fail tests (404 unknown endpoint, 405 wrong method, 401 token, 422 invalid body/params); (b) unknown fields: request bodies are strict (decided, `additionalProperties: false`); unknown query params still open (FastAPI ignores them by default); (c) route-set equality; (d) coverage meta-check: every documented (path, method, status) exercised at least once; (e) Schemathesis property-based + negative testing in stage 2 (4.29.0 declares Python 3.14; confirm in practice); (f) behavior tests from PROJECT_PLAN; (g) optional GitHub Actions CI running ruff + pytest; (h) Android-side conformance (stage 5); (i) with generated models, only per-response shape validation becomes redundant: must-fail tests still verify wiring (route uses the right model), status codes and error-body format, input outside Pydantic (malformed JSON, wrong content type, empty/oversized batch, huge body), and that the generator translated each constraint correctly.
 12. ~~Generate Pydantic models?~~ → yes: `datamodel-code-generator`, committed output, freshness test (2026-10-03).
 
 ## Decisions Made
@@ -117,12 +123,18 @@ Phase 2 (in progress: design review done, contract next)
 | Item identity `(feed_id, item_key)`; `item_key` = `items.dedup_key`, in queue response and swipe log | Needed for "latest swipe per item wins" and queue removal; rowid can be reused after pruning (decided 2026-10-02, PROJECT_PLAN §3 Swipe recording) |
 | Swipe flags the item (`items.swiped_at`), doesn't delete it | Matches stage 3 rules; keeps undo possible (deleted+tombstoned items can't return) |
 | `saved`: PK `(feed_id, item_key)`, `swipe_id` → `swipes`, display fields via join; `next_attempt_at` for backoff | One entry per article; no duplicated data; works when the item is already pruned |
-| Hand-written `api/openapi.yaml` (3.1) + contract tests (route set + request/response validation) | Spec stays the single source of truth; exact diff vs FastAPI output is brittle |
+| Hand-written `api/openapi.yaml` (3.1) + contract tests (route set, must-fail, status codes) | Spec stays the single source of truth; exact diff vs FastAPI output is brittle; shapes covered by generated models |
 | Deploys: Claude runs only the deploy command + read-only checks, per-deploy user approval | Fast feedback without giving Claude broad server authority; docker group is root-equivalent |
 | Swipe log adds `fetched_at`, `tz_offset_minutes`, `app_version`; stage 6 logs reads permanently | Completeness check: data only available at swipe time is otherwise lost; impressions not needed in a swipe UI |
 | Queue endpoint: `limit`, stateless, phone dedups by `(feed_id, item_key)` | Server can't know what the phone holds (offline, unsynced swipes) |
 | `api` Compose service added in Phase 2, not Phase 4 | Stage 2 must be testable with `curl` over the tailnet |
 | Generate API Pydantic models from `api/openapi.yaml` (committed, freshness test) | Request/response shapes defined once; drift impossible while fresh; must-fail and route tests still required |
+| Card length limits enforced at ingest = spec limits (generous) | Every served card must pass swipe validation; otherwise a swipe is stuck forever. Local data: max headline 108, max 25 tags |
+| Batch `POST /swipes` all-or-nothing `422`; phone falls back to single swipes, dead-letters a swipe that fails alone | Strict contract fits generated models; one bad swipe never blocks the queue |
+| Never tighten request validation without considering queued swipes | Tightening turns queued swipes into dead letters |
+| Dead letters: server logs 422s (stage 2); phone retries on app update + debug retry/export (stage 5); lenient upload endpoint only if needed (stage 8) | Rejections are noticed and never permanently lost, without loosening the strict contract |
+| Swipe JSON nests `card` (= queue object); `swipes` table flat | `Card` schema and its limits defined once |
+| API conventions: unauthenticated fixed `/health`; wrapped list responses; content endpoint always 200 for saved items; required-but-nullable fields; new request fields optional | Recorded in PROJECT_PLAN §3 Repository |
 | Phase 2 work on branch `phase2` | User request (2026-10-02) |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 

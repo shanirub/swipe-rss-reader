@@ -48,17 +48,24 @@ All networking happens over **Tailscale** (WireGuard-based private mesh VPN). No
   - **Caveat:** certificates are recorded in public Certificate Transparency logs, so the machine name and tailnet name become publicly visible (not reachable). Use a non-sensitive machine name; consider a randomized tailnet name.
 - Serve adds identity headers (e.g., `Tailscale-User-Login`) to proxied requests. Not used for auth: they can be spoofed if the API is ever reached without going through Serve.
 - **API auth: static bearer token** on top of Tailscale (defense in depth against local processes on the server and misconfiguration such as Funnel or a `0.0.0.0` publish). Server: token in `.env`, constant-time comparison. App: token in gitignored `local.properties` → `BuildConfig`, added by an OkHttp interceptor. Back it up alongside the keystore; rotation requires an app rebuild. Declared as a security scheme in the OpenAPI contract.
+- `/health` is exempt from the token (see API conventions).
 - **Machine name:** keep `my-first-server` (tailnet name is already randomized: `porcupine-celsius.ts.net`). The server is shared with other hobby services (e.g., Vikunja), so the name is intentionally not RSS-specific.
 - **Multiple services on the host:** one **HTTPS port per service** via Serve (`:8443` → RSS API; a future Vikunja gets another port, e.g. `:9443`), not sub-paths. `:443` is unavailable to Serve while nginx needs `0.0.0.0:443`. Verified in stage 0: Serve accepts arbitrary HTTPS ports (443, 8443, 9443 tested), all with the same MagicDNS certificate. Each service in its own Compose project with its own Docker network and volumes; never mount the Docker socket into a container.
-- **Existing public service (accepted exception):** nginx on public `:80`/`:443` fronts the owner's MCP server (`mcp-server.service`, `127.0.0.1:8000`, domain `mcp.ministryofpa.ws`) for a claude.ai connector. Unrelated to this project; leave it running. nginx binds `0.0.0.0:443`, which includes the Tailscale IP, Verified in stage 0 that Serve on `:443` blocks nginx from starting (bind conflict), so the RSS API uses Serve `:8443`.
+- **Existing public service (accepted exception):** nginx on public `:80`/`:443` fronts the owner's MCP server (`mcp-server.service`, `127.0.0.1:8000`, domain `mcp.ministryofpa.ws`) for a claude.ai connector. Unrelated to this project; kept installed, currently disabled while idle (re-enable command in findings.md). nginx binds `0.0.0.0:443`, which includes the Tailscale IP. Verified in stage 0 that Serve on `:443` blocks nginx from starting (bind conflict), so the RSS API uses Serve `:8443`.
 - **Tailscale ACLs: default allow-all, kept deliberately** (decided in stage 0). The owner controls which devices join the tailnet. Accepted consequence: the extraction SSRF guard is the only barrier between the server and other tailnet devices, so it must refuse the Tailscale ranges explicitly, both IPv4 `100.64.0.0/10` and IPv6 `fd7a:115c:a1e0::/48`. Revisit if a less trusted device joins.
 
 ### Repository
 
 - **Monorepo** containing backend, Android app, and the API contract.
 - The **OpenAPI spec** file in the repo is the single source of truth for the backend ↔ app interface.
-- Spec: **`api/openapi.yaml`** (OpenAPI 3.1), **hand-written first**; code follows it. Backend drift is caught by **contract tests** in pytest: (1) the app's set of (path, method) pairs equals the spec's; (2) endpoint tests validate real requests/responses against the spec (e.g., `openapi-core`; verify Python 3.14 + OpenAPI 3.1 support, else `jsonschema`). No exact comparison with FastAPI's generated spec (brittle). FastAPI's own `/openapi.json` and `/docs` are disabled or serve the YAML, so no second divergent spec is exposed. Behavior the spec can't express (idempotency, queue ordering, swipe flag, auth) is covered by ordinary tests derived from this plan.
+- Spec: **`api/openapi.yaml`** (OpenAPI 3.1), **hand-written first**; code follows it. Backend drift is caught by **contract tests** in pytest: (1) the app's set of (path, method) pairs equals the spec's; (2) must-fail and status-code tests per endpoint. Request/response *shapes* come from models generated from the spec (below), so per-response shape validation (e.g., `openapi-core`) is largely redundant; the full test strategy is settled in the testing-coverage discussion before contract tests are written. No exact comparison with FastAPI's generated spec (brittle). FastAPI's own `/openapi.json` and `/docs` are disabled or serve the YAML, so no second divergent spec is exposed. Behavior the spec can't express (idempotency, queue ordering, swipe flag, auth) is covered by ordinary tests derived from this plan.
 - **API (wire) models are generated from the spec** with `datamodel-code-generator` (dev-only dependency, version pinned in `uv.lock`, formatter set explicitly) into a committed file, e.g. `backend/src/swipe_rss/api_models.py`, marked generated / do-not-edit. A **freshness test** regenerates into a temp dir and fails if the committed file differs. Custom validation lives in subclasses or handlers, never in the generated file. SQLAlchemy models stay separate (storage shape may differ from wire shape). Generation guarantees the *models* match the spec; it does not replace tests for routes, status codes, auth, error handling, wiring of models to routes, or invalid input (see the testing-coverage discussion).
+- **API conventions** (decided 2026-10-03):
+  - `GET /health` is the only unauthenticated endpoint: fixed `{"status": "ok"}`, no DB access, never extended with versions or stats.
+  - List responses are wrapped in an object (`{"items": [...]}`, `{"feeds": [...]}`) so fields can be added without breaking clients.
+  - `GET /saved/{feed_id}/{item_key}/content` returns `200` for any saved entry; the client branches on `extraction_status`, `text` is null until `done`; `404` only if not saved.
+  - Fields are **required but nullable**: every field is always present, `null` when there is no value. A forgotten field is a `422`, not a silently missing value.
+  - **New request fields must be optional** (and old ones never tightened), so older app versions and their queued swipes keep working.
 
 ### Workflow
 
@@ -98,7 +105,7 @@ All networking happens over **Tailscale** (WireGuard-based private mesh VPN). No
 - `[defaults]` table for global settings; per-feed overrides (e.g., `retention_hours`) live on the feed entry later.
 - **`max_item_age_hours`** (in `[defaults]`, currently 24): the fetcher skips entries published longer ago than this; entries without a date use fetch time. Not tombstoned. Introduced to keep the initial backlog out; revisit with retention (stage 3).
 - **Invalid file → the fetch run aborts and logs a clear error.** A typo must never be interpreted as "all feeds removed".
-- Initial feed list: converted from the owner's existing Markdown list (to be shared later).
+- Initial feed list: converted from the owner's Markdown list (`tech_privacy_rss_feeds.md`).
 
 ### Deduplication
 
@@ -137,7 +144,7 @@ Rule: **item properties are captured at swipe time** (items are pruned, so anyth
 | `summary` | Permanent copy, **plain text** (HTML is stripped at ingest, so items are already plain text when served). |
 | `link` | Normalized; enables re-fetching full text later (embeddings) and link domain as a feature. |
 | `published_at` | Article age at swipe time. |
-| `tags`, `author` | JSON, nullable; cheap features when the feed provides them. |
+| `tags`, `author` | `tags`: array of strings, possibly empty (stored as JSON); `author`: nullable. Cheap features when the feed provides them. |
 | `swiped_at` | Client time; the real event time (may precede receipt by days when offline). |
 | `received_at` | Server time; audit. |
 | `time_to_swipe_ms` | Nullable; how long the card was on screen before the swipe (implicit interest signal). |
@@ -151,9 +158,17 @@ Rule: **item properties are captured at swipe time** (items are pruned, so anyth
 ### Swipe recording
 
 - **Idempotency:** the phone generates a `swipe_id` (UUIDv4) at swipe time and stores it with the swipe in the Room queue. Server: `swipe_id` is the primary key; inserts use `ON CONFLICT(swipe_id) DO NOTHING`; the response is success whether new or duplicate, so retries are always safe.
-- **Endpoint:** a single batch `POST /swipes` accepting 1..N swipes (live swiping sends one, offline sync sends the backlog). Partial failures are resolved by resending the whole batch.
+- **Endpoint:** a single batch `POST /swipes` accepting 1..N swipes (live swiping sends one, offline sync sends the backlog). Transport failures (no response, timeout) are resolved by resending the whole batch; validation failures follow "Invalid swipes" below.
+- **Invalid swipes (decided 2026-10-03):** the server validates the batch as a whole (`422` rejects all of it). On `422`, the phone resends that batch one swipe at a time; a swipe that fails alone moves to a local **dead-letter** table (kept, not resent automatically), so one bad swipe never blocks the queue. Alternatives considered: per-swipe results in a `200` (loose request schema), one swipe per request (many requests).
+- **Dead letters are visible and recoverable:**
+  - *Stage 2:* the server logs every `422` on `POST /swipes` with the `swipe_id`s, the validation errors and the request body (own data, single user), so rejections show up in `docker compose logs` even if the phone never reports them.
+  - *Stage 5:* each dead letter is stored with the `app_version` that failed and its error. On the first start of a new app version, all dead letters are retried once (a release that fixes the cause may first repair stored swipes). A debug screen lists them with **retry** and **export as JSON**. Resending is always safe: dead letters keep their original `swipe_id`.
+  - *Stage 8, only if dead letters actually occur:* a deliberately lenient `POST /dead-letters` (any JSON up to a size limit, stored as-is) plus a server command to repair and import them into `swipes`.
+- **Never tighten request validation without considering swipes already queued on phones:** a stricter rule turns them into dead letters. To tighten a limit, lower the ingest cap first, the request limit later.
 - **Append-only log:** no per-item uniqueness. For training, the **latest swipe per item wins**. Undo (stage 8) becomes another event, not a schema change.
 - **Card snapshot:** each swipe carries the item fields the phone received from the queue (`feed_id`, `item_key`, headline, summary, link, `published_at`, `fetched_at`, tags, author); the server stores them as given (Pydantic-validated, length-limited). This makes swipes independent of item pruning (offline for any duration) and makes the label pair with exactly what was displayed. If the item still exists (looked up by `(feed_id, item_key)`), the server also removes it from the queue by setting `items.swiped_at` (a flag, not a delete); the queue serves only rows with `swiped_at IS NULL`, and the pruning job deletes swiped rows later. Flagging keeps stage 8 undo simple: clearing the flag returns the card to the queue, whereas a deleted item could never come back (its key is tombstoned).
+- **Wire format nests the card** (decided 2026-10-03): a swipe is `{swipe_id, action, swiped_at, tz_offset_minutes, time_to_swipe_ms, app_version, card: {…}}`, where `card` is exactly the object received from `/queue`. One `Card` schema serves both endpoints, so its limits exist once. The `swipes` table stays flat; the server maps the fields when storing. Rejected: flat JSON (card fields defined twice, limits could drift), `allOf` composition (needs `unevaluatedProperties`, generator support unverified).
+- **Card length limits are enforced at ingest, equal to the spec's limits** (decided 2026-10-03): headline 1000, summary 2000, author 500, tags ≤ 50 × 200, link 4096 chars. The fetcher truncates headline/author/tags (with `…`, like summary) and stores `null` for an oversized link (a truncated URL is broken). Every card the queue serves therefore passes `POST /swipes` validation; otherwise an over-long field would make a swipe permanently unrecordable. A test asserts fetcher limits ≤ the generated models' limits. The stage 2 migration applies the same caps to rows stored before this rule. Alternatives considered: no field limits (rows unbounded), truncate on store (stored ≠ displayed), skip oversized items (silent loss), loose limits only (failure rarer, not impossible).
 - **Item identity is `(feed_id, item_key)`**, where `item_key` is the item's dedup key, exposed in the queue response under that name. Chosen over `items.id`: the rowid can be reused after pruning, which would silently merge unrelated articles in the permanent swipe log; the dedup key is derived from the article and stays meaningful after the item is gone. Known limitation: if a feed's dedup rule changes (e.g., a `dedup = "link"` override is added, or the feed's GUIDs change), the same article gets a new key and counts as a different item.
 
 ### Content extraction
@@ -170,6 +185,7 @@ Rule: **item properties are captured at swipe time** (items are pruned, so anyth
 ### Retention
 
 - Unswiped items: **2 days** (may later be tuned per feed).
+- Swiped items (`items.swiped_at` set): deleted by the pruning job; how soon is decided in stage 3 (default: next run, since the swipe log holds the card).
 - Saved items: **2 weeks**.
 - **Tombstones:** keep seen dedup keys (see Deduplication) for ~90 days (longer than any feed's window) so pruned items are not re-inserted as new. Written at first sight, expired by the pruning job.
 - **Swipe log is kept permanently** and stores the item's headline and summary text itself, not only a reference to an item that will be pruned.
@@ -205,6 +221,7 @@ Rule: **item properties are captured at swipe time** (items are pruned, so anyth
 - Dependency injection (Hilt) skipped for the MVP.
 - **Distribution:** sideloaded release APK signed with a personal key, installed via adb (wireless over Tailscale) or downloaded from the server. Increment `versionCode` each release. **Back up the keystore.** Losing it forces an uninstall to update.
 - **minSdk:** set to the owner's phone Android version.
+- **kotlinx.serialization must send nulls and defaults** (`encodeDefaults = true`, or no default values on API fields): by default it omits fields equal to their default, which would drop required-but-nullable fields and get swipes rejected with `422`. Verify the current default when writing the client.
 
 ### Notifications
 
@@ -217,7 +234,7 @@ Rule: **item properties are captured at swipe time** (items are pruned, so anyth
 - **feed_status:** per-feed fetch state, conditional-GET headers, last successful fetch, last new item, last error.
 - **items:** fetched articles (subject to retention); nullable `swiped_at` flags swiped items, which leave the queue but stay until pruned.
 - **swipes:** permanent swipe log; see "Swipe log fields" in §3. Item identity `(feed_id, item_key)`.
-- **saved:** read-later entries, one per `(feed_id, item_key)`, referencing the save swipe (`swipe_id`); extracted content and extraction state (`extraction_status`, `attempts`, `last_error`, `next_attempt_at`), nullable `read_at`.
+- **saved:** read-later entries, one per `(feed_id, item_key)`, referencing the save swipe (`swipe_id`); extracted content (`text`, `extracted_at`) and extraction state (`extraction_status`, `attempts`, `last_error`, `next_attempt_at`), nullable `read_at`.
 - **tombstones:** seen `(feed_id, key)` dedup keys with first-seen timestamps (~90 days), written at insert time.
 
 Feed definitions themselves live in the feeds file, not the database.
@@ -228,17 +245,17 @@ Feed definitions themselves live in the feeds file, not the database.
 
 Each stage should be usable and testable before the next. Stages 0–4 are backend-only and testable with `curl` over the tailnet.
 
-0. **Server foundation:** Docker, Tailscale Serve, firewall verification (no public ports), automatic security updates, repo clone on the server.
 Stages are **vertical slices**: each stage adds the tables it needs via a new Alembic migration, next to the code that uses them.
 
+0. **Server foundation:** Docker, Tailscale Serve, firewall verification (no public ports), automatic security updates, repo clone on the server.
 1. **Ingest:** SQLite settings, Alembic baseline, `feed_status` / `items` / `tombstones` tables. Fetcher: feeds file → fetch (conditional GET) → parse → deduplicate (incl. tombstones) → store. Run by the scheduler container. Testable by running a fetch and inspecting the DB with `sqlite3`.
 2. **API:** OpenAPI contract first, then `swipes` / `saved` tables (new migration) and endpoints for: swipe queue, recording swipes, saved list, extracted content, per-feed status. Includes the `api` Compose service (published on `127.0.0.1:8001`) so the stage is testable with `curl` over the tailnet; stage 4 completes the rest of the Compose setup.
-3. **Retention:** pruning job (unswiped items, saved items, tombstone expiry). Comes after the API because its rules depend on swipe and save state.
+3. **Retention:** pruning job (unswiped items, swiped items, saved items, tombstone expiry). Comes after the API because its rules depend on swipe and save state.
 4. **Deployment & backups:** full Compose setup, encrypted rclone backup to Google Drive.
-5. **Android MVP:** swipe cards against the API, Room cache, offline swipe queue with WorkManager sync, feed-status screen.
-6. **Read-later view:** saved list, extracted-content reader, Custom Tabs fallback.
+5. **Android MVP:** swipe cards against the API, Room cache, offline swipe queue with WorkManager sync (single-swipe fallback on `422`, dead-letter store with retry on app update, debug screen with retry/export), feed-status screen.
+6. **Read-later view:** saved list, extracted-content reader, Custom Tabs fallback, permanent log of reads.
 7. **Ranking:** TF-IDF + logistic regression on the swipe log, queue ordering by predicted interest, exploration slice.
-8. **Iterate:** embeddings, per-feed retention tuning, undo, UX polish.
+8. **Iterate:** embeddings, per-feed retention tuning, undo, UX polish; lenient dead-letter upload if needed.
 
 ---
 
@@ -247,6 +264,7 @@ Stages are **vertical slices**: each stage adds the tables it needs via a new Al
 All decisions needed before stages 0–2 are resolved. Remaining items can wait until the stage noted.
 
 - What happens to existing items when a feed is removed from `feeds.toml`. *(after stage 1; default: let them expire)*
+- How soon swiped items are pruned. *(stage 3; default: next pruning run)*
 - Behavior of a saved item after it is read (remove vs. move to a read history). *(stage 6; a nullable `read_at` column keeps both options open cheaply)*
   - Either way, **opening a saved item is logged as a permanent, append-only event** (it is a training signal: saved-but-never-read is a weaker positive), not only as `saved.read_at`, which disappears when `saved` rows are pruned after two weeks. *(stage 6)*
 - Backup method and policy: snapshot via `sqlite3 .backup` or `VACUUM INTO` before upload (never copy the live WAL database file); frequency and retention. *(stage 4)*

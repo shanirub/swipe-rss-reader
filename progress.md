@@ -63,7 +63,7 @@
 
 ### Phase 2 design review
 
-- **Status:** in_progress
+- **Status:** complete
 - Decisions (recorded in `PROJECT_PLAN.md` + `task_plan.md`):
   1. Item identity `(feed_id, item_key)`, `item_key` = dedup key.
   2. Swipe flags `items.swiped_at` (no delete); `saved` PK `(feed_id, item_key)`, `swipe_id` → `swipes`, `next_attempt_at`.
@@ -74,13 +74,23 @@
   7. `api` Compose service added in Phase 2.
 - Created branch `phase2`; committed and pushed the design review.
 
-### Phase 2 design review, part 2 (2026-10-03)
+## Session: 2026-10-03
 
+### Phase 2 design review, part 2 + OpenAPI spec
+
+- **Status:** complete
 - Added Key Question 11: testing-coverage discussion (to do before contract tests).
 - Checked PyPI: datamodel-code-generator, openapi-core, schemathesis all declare Python 3.14.
 - Trial-generated Pydantic v2 models from a sample 3.1 spec (findings.md).
 - Decision 8: generate API models from the spec (committed file + freshness test).
-- Files modified: `PROJECT_PLAN.md`, `task_plan.md`, `findings.md`, `progress.md`
+- Drafted `api/openapi.yaml` (7 endpoints incl. `/health`); validated with `openapi-spec-validator` (OK); generated models in scratchpad (OK). Found: ingest caps only `summary` (findings.md). Under review with the user, not committed.
+- Spec review point 1 decided: option A, ingest caps = generous spec limits (headline 1000, author 500, tags 50×200, link 4096 → null); spec updated.
+- Spec review point 2 decided: option A, all-or-nothing `422` + phone single-swipe fallback + dead-letter store; "never tighten validation" rule added.
+- Dead-letter handling recorded: 422 logging (stage 2), retry on app update + debug retry/export (stage 5), lenient upload endpoint only if needed (stage 8).
+- Spec review point 3 decided: swipe nests `card`.
+- Spec review point 4 decided: API conventions (`/health` without auth, wrapped lists, content always 200, required-but-nullable, new request fields optional, Kotlin `encodeDefaults` note).
+- Rechecked all planning files and `PROJECT_PLAN.md` for stale data; committed spec + plan updates.
+- Files created/modified: `api/openapi.yaml` (new), `PROJECT_PLAN.md`, `task_plan.md`, `findings.md`, `progress.md`
 
 ## Test Results
 
@@ -96,6 +106,8 @@
 | Server deploy + manual fetch | compose up; `swipe-rss fetch` in container | runs, items stored | 58 new; mekomit 403 | partial |
 | Scheduled fetch (supercronic) | 12:00 UTC cron tick | job runs | job succeeded; 0 new, 7×304, 1 failed (mekomit) | pass |
 | Docker loopback publish | nginx:alpine on 127.0.0.1:8001 | 200 on loopback only | 200, bound 127.0.0.1 | pass |
+| OpenAPI spec valid | `openapi-spec-validator api/openapi.yaml` | OK | OK | pass |
+| Models generate from spec | `datamodel-codegen` (scratchpad) | clean Pydantic v2 models | clean; RootModel wrappers for shared types | pass |
 
 ## Error Log
 
@@ -108,8 +120,8 @@
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phases 0–1 complete; Phase 2 design review done, on branch `phase2`; next: `api/openapi.yaml` |
+| Where am I? | Phases 0–1 complete; Phase 2: design + `api/openapi.yaml` done on branch `phase2`; next: generate API models |
 | Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
-| What have I learned? | See findings.md (current state, server inventory, stage 1 research) |
-| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md` |
+| What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |
+| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated |
