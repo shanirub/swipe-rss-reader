@@ -10,9 +10,17 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from swipe_rss.api import MIN_TOKEN_LENGTH, create_app
-from swipe_rss.api_models import Card, QueueResponse, SwipeBatchResult
+from swipe_rss.api_models import (
+    Card,
+    Error,
+    FeedListResponse,
+    QueueResponse,
+    SavedContent,
+    SavedListResponse,
+    SwipeBatchResult,
+)
 from swipe_rss.config import Settings
-from swipe_rss.models import Item, Saved, Swipe
+from swipe_rss.models import FeedStatus, Item, Saved, Swipe
 
 TOKEN = "t" * MIN_TOKEN_LENGTH
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
@@ -311,3 +319,184 @@ def test_second_swipe_keeps_the_first_swiped_at(client, engine):
     client.post("/swipes", json={"swipes": [swipe(card, "save")]})  # e.g. a later change of mind
     with Session(engine) as s:
         assert s.scalars(select(Item.swiped_at)).one() == T0
+
+
+# --- GET /feeds ---
+
+FEEDS_TOML = """
+[[feeds]]
+id = "zeta"
+name = "Zeta News"
+url = "https://zeta.example/feed"
+
+[[feeds]]
+id = "alpha"
+url = "https://alpha.example/rss"
+"""
+
+
+@pytest.fixture
+def feeds_path(tmp_path):
+    path = tmp_path / "feeds.toml"
+    path.write_text(FEEDS_TOML)
+    return path
+
+
+@pytest.fixture
+def feeds_client(engine, db_path, feeds_path):
+    app = create_app(Settings(db_path=db_path, feeds_path=feeds_path, api_token=TOKEN))
+    return TestClient(app, headers=AUTH)
+
+
+def feeds(client) -> list[dict]:
+    response = client.get("/feeds")
+    assert response.status_code == 200, response.text
+    return FeedListResponse.model_validate(response.json()).model_dump(mode="json")["feeds"]
+
+
+def test_feeds_never_fetched(feeds_client):
+    assert feeds(feeds_client) == [  # file order, not alphabetical
+        {"feed_id": "zeta", "name": "Zeta News", "url": "https://zeta.example/feed", "last_attempt_at": None,
+         "last_success_at": None, "last_new_item_at": None, "last_error": None, "consecutive_failures": 0},
+        {"feed_id": "alpha", "name": None, "url": "https://alpha.example/rss", "last_attempt_at": None,
+         "last_success_at": None, "last_new_item_at": None, "last_error": None, "consecutive_failures": 0},
+    ]  # fmt: skip
+
+
+def test_feeds_show_fetch_state(feeds_client, engine):
+    five_hours_ago = T0 - timedelta(hours=5)
+    with Session(engine) as s, s.begin():
+        s.add(FeedStatus(feed_id="zeta", last_attempt_at=T0, last_success_at=T0, last_new_item_at=five_hours_ago))
+        s.add(
+            FeedStatus(feed_id="alpha", last_attempt_at=T0, last_error="HTTPStatusError: 500", consecutive_failures=3)
+        )
+        s.add(FeedStatus(feed_id="removed", last_attempt_at=T0))  # no longer in feeds.toml: not listed
+    zeta, alpha = feeds(feeds_client)
+    assert zeta["last_success_at"] == "2026-10-03T12:00:00Z" and zeta["last_new_item_at"] == "2026-10-03T07:00:00Z"
+    assert zeta["consecutive_failures"] == 0 and zeta["last_attempt_at"] == "2026-10-03T12:00:00Z"
+    assert alpha["last_attempt_at"] == "2026-10-03T12:00:00Z"
+    assert (alpha["last_success_at"], alpha["last_error"], alpha["consecutive_failures"]) == (
+        None,
+        "HTTPStatusError: 500",
+        3,
+    )
+
+
+def test_feeds_file_is_reread_on_every_request(feeds_client, feeds_path):
+    assert [f["feed_id"] for f in feeds(feeds_client)] == ["zeta", "alpha"]
+    feeds_path.write_text(FEEDS_TOML + '\n[[feeds]]\nid = "new"\nurl = "https://new.example/feed"\n')
+    assert [f["feed_id"] for f in feeds(feeds_client)] == ["zeta", "alpha", "new"]
+
+
+def test_invalid_feeds_file_is_503(feeds_client, feeds_path):
+    feeds_path.write_text("[[feeds]\nid = ")  # TOML syntax error
+    response = feeds_client.get("/feeds")
+    assert response.status_code == 503
+    assert Error.model_validate(response.json()).detail.startswith("feeds.toml is invalid")
+
+
+# --- GET /saved and GET /saved/{feed_id}/{item_key}/content ---
+
+
+def save(client, engine, key: str, swiped_at: str, hours_old: float = 1) -> dict:
+    add_item(engine, "a", key, hours_old=hours_old)
+    card = next(c for c in queue(client) if c["headline"] == f"a {key}")
+    client.post("/swipes", json={"swipes": [swipe(card, "save", swiped_at=swiped_at)]})
+    return card
+
+
+def saved_list(client) -> list[dict]:
+    response = client.get("/saved")
+    assert response.status_code == 200, response.text
+    return SavedListResponse.model_validate(response.json()).model_dump(mode="json")["items"]
+
+
+def test_saved_list_empty(client):
+    assert saved_list(client) == []
+
+
+def test_saved_list_shows_the_save_swipes_card_newest_first(client, engine):
+    save(client, engine, "older", swiped_at="2026-10-03T09:00:00+00:00")
+    card = save(client, engine, "newer", swiped_at="2026-10-03T10:00:00+00:00")
+    newer, older = saved_list(client)
+    assert (newer["headline"], older["headline"]) == ("a newer", "a older")
+    assert newer["feed_id"] == "a" and newer["item_key"] == card["item_key"]
+    assert newer["saved_at"] == "2026-10-03T10:00:00Z" and newer["published_at"] == card["published_at"]
+    assert newer["extraction_status"] == "pending" and newer["read_at"] is None
+
+
+def test_saved_entry_carries_link_and_read_at(client, engine):
+    add_item(engine, "a", "k1", hours_old=1)
+    with Session(engine) as s, s.begin():
+        s.scalars(select(Item)).one().link = "https://a.example/p"
+    [card] = queue(client)
+    client.post("/swipes", json={"swipes": [swipe(card, "save")]})
+    [entry] = saved_list(client)
+    assert entry["link"] == "https://a.example/p" and entry["read_at"] is None
+    with Session(engine) as s, s.begin():  # stage 6 will set read_at; the list must pass it through
+        s.scalars(select(Saved)).one().read_at = T0
+    assert saved_list(client)[0]["read_at"] == "2026-10-03T12:00:00Z"
+
+
+def test_saved_list_survives_item_pruning(client, engine):
+    save(client, engine, "k1", swiped_at="2026-10-03T09:00:00+00:00")
+    with Session(engine) as s, s.begin():
+        s.query(Item).delete()
+    assert [e["headline"] for e in saved_list(client)] == ["a k1"]
+
+
+def set_extraction(engine, **values) -> None:
+    with Session(engine) as s, s.begin():
+        saved = s.scalars(select(Saved)).one()
+        for name, value in values.items():
+            setattr(saved, name, value)
+
+
+def content(client, card: dict):
+    return client.get(f"/saved/{card['feed_id']}/{card['item_key']}/content")
+
+
+def test_content_pending(client, engine):
+    card = save(client, engine, "k1", swiped_at="2026-10-03T09:00:00+00:00")
+    response = content(client, card)
+    assert response.status_code == 200
+    assert SavedContent.model_validate(response.json()).model_dump() == {
+        "extraction_status": "pending", "text": None, "extracted_at": None, "last_error": None}  # fmt: skip
+
+
+def test_content_done(client, engine):
+    card = save(client, engine, "k1", swiped_at="2026-10-03T09:00:00+00:00")
+    set_extraction(engine, extraction_status="done", text="Full article.", extracted_at=T0)
+    body = content(client, card).json()
+    assert (body["extraction_status"], body["text"], body["extracted_at"]) == (
+        "done",
+        "Full article.",
+        "2026-10-03T12:00:00Z",
+    )
+
+
+def test_content_failed_has_error_and_no_text(client, engine):
+    card = save(client, engine, "k1", swiped_at="2026-10-03T09:00:00+00:00")
+    set_extraction(engine, extraction_status="failed", attempts=3, last_error="timeout", text="leftover")
+    body = content(client, card).json()
+    assert (body["extraction_status"], body["text"], body["last_error"]) == ("failed", None, "timeout")
+
+
+def test_content_not_saved_is_404(client, engine):
+    add_item(engine, "a", "k1", hours_old=1)
+    [card] = queue(client)  # exists in the queue, but was never saved
+    response = content(client, card)
+    assert response.status_code == 404
+    Error.model_validate(response.json())
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/saved/a/not-a-key/content",  # item_key pattern
+        f"/saved/Bad_Feed/guid:{'0' * 64}/content",  # feed_id pattern
+        f"/saved/{'a' * 101}/guid:{'0' * 64}/content",  # feed_id length
+    ],
+)
+def test_content_rejects_malformed_path(client, path):
+    assert client.get(path).status_code == 422

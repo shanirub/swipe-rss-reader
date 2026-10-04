@@ -12,14 +12,16 @@ Everything runs over Tailscale, a private WireGuard network; nothing is exposed 
 - **How the code works:** [`docs/architecture.md`](docs/architecture.md) has diagrams of the system, modules, database, request flows and lifecycles.
 - **Current progress:** [`task_plan.md`](task_plan.md) shows which stage is in progress and what comes next. [`progress.md`](progress.md) is the session log and [`findings.md`](findings.md) collects research and server facts.
 
+The three tracking files (`task_plan.md`, `progress.md`, `findings.md`) and the way they are kept up to date are not my invention: they come from [planning-with-files](https://github.com/OthmanAdi/planning-with-files), a Claude Code skill for Manus-style "working memory on disk". The design document `PROJECT_PLAN.md` is this project's own.
+
 ## Repository structure
 
 ```
 .
 ├── PROJECT_PLAN.md          design source of truth
-├── task_plan.md             execution tracking (phases, next step, decisions)
-├── progress.md              session log, test results, errors
-├── findings.md              research notes, server inventory
+├── task_plan.md             execution tracking (phases, next step, decisions)    ┐ planning-with-files
+├── progress.md              session log, test results, errors                   │ (Claude Code skill)
+├── findings.md              research notes, server inventory                    ┘
 ├── compose.yaml             Docker Compose: migrate + scheduler (API service from stage 2)
 ├── .env.example             template for .env (API token); .env itself is never committed
 ├── docs/
@@ -38,6 +40,8 @@ Everything runs over Tailscale, a private WireGuard network; nothing is exposed 
     │   ├── api.py           HTTP API (FastAPI app factory, bearer-token auth, routes)
     │   ├── queue.py         swipe queue: unswiped items, round-robin across feeds
     │   ├── swipes.py        recording swipes: idempotent batch insert, saved entries
+    │   ├── saved.py         read-later list and extracted content
+    │   ├── feed_health.py   per-feed fetch health for GET /feeds
     │   ├── cli.py           `swipe-rss` command (e.g. `swipe-rss fetch`)
     │   ├── config.py        settings from environment variables
     │   ├── db.py            SQLite engine: WAL, busy_timeout, BEGIN IMMEDIATE

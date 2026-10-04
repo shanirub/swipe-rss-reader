@@ -14,22 +14,46 @@ import json
 import logging
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, status
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from swipe_rss.api_models import Health, QueueResponse, SwipeBatch, SwipeBatchResult
+from swipe_rss.api_models import (
+    Card,
+    FeedListResponse,
+    Health,
+    QueueResponse,
+    SavedContent,
+    SavedListResponse,
+    SwipeBatch,
+    SwipeBatchResult,
+)
 from swipe_rss.config import Settings, get_settings
 from swipe_rss.db import make_engine
+from swipe_rss.feed_health import feed_health
+from swipe_rss.feeds import FeedsFileError, load_feeds
 from swipe_rss.queue import select_queue
+from swipe_rss.saved import list_saved, saved_content
 from swipe_rss.swipes import record_swipes
 
 log = logging.getLogger(__name__)
 
 MIN_TOKEN_LENGTH = 32
 PUBLIC_PATHS = frozenset({"/health"})
+
+
+# Path parameters are not covered by the generated models (they describe bodies), so their
+# rules are read from the generated Card instead of being copied: they can't drift from the spec.
+def _constraint(field: str, name: str):
+    return next(getattr(m, name) for m in Card.model_fields[field].metadata if getattr(m, name, None) is not None)
+
+
+FeedIdPath = Annotated[
+    str, Path(pattern=_constraint("feed_id", "pattern"), max_length=_constraint("feed_id", "max_length"))
+]
+ItemKeyPath = Annotated[str, Path(pattern=_constraint("item_key", "pattern"))]
 
 _bearer = HTTPBearer(auto_error=False)  # missing/malformed header -> None; we answer 401 ourselves
 
@@ -98,5 +122,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with Session(engine) as session, session.begin():
             result = record_swipes(session, batch.swipes)
         return SwipeBatchResult(stored=result.stored, duplicates=result.duplicates)
+
+    @app.get("/saved", response_model=SavedListResponse)
+    def get_saved() -> SavedListResponse:
+        with Session(engine) as session, session.begin():
+            return SavedListResponse(items=list_saved(session))
+
+    @app.get("/saved/{feed_id}/{item_key}/content", response_model=SavedContent)
+    def get_saved_content(feed_id: FeedIdPath, item_key: ItemKeyPath) -> SavedContent:
+        with Session(engine) as session, session.begin():
+            content = saved_content(session, feed_id, item_key)
+        if content is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not saved")
+        return content
+
+    @app.get("/feeds", response_model=FeedListResponse)
+    def get_feeds() -> FeedListResponse:
+        try:
+            feeds_file = load_feeds(settings.feeds_path)  # re-read per request, like the fetcher
+        except FeedsFileError as e:
+            log.error("feeds.toml is invalid: %s", e)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"feeds.toml is invalid: {e}"
+            ) from e
+        with Session(engine) as session, session.begin():
+            return FeedListResponse(feeds=feed_health(session, feeds_file))
 
     return app

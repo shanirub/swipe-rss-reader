@@ -150,6 +150,12 @@ paths:
                 $ref: "#/components/schemas/FeedListResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: feeds.toml is invalid (the fetcher is not running either); `detail` says why
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
 components:
   securitySchemes:

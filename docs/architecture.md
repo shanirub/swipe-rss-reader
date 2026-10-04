@@ -12,10 +12,10 @@ Contents:
 4. [Database models](#4-database-models-class-diagram) and [API models](#5-api-models-class-diagram)
 5. [Fetch run](#6-fetch-run-sequence) and [one feed entry through ingest](#7-one-feed-entry-through-ingest-flowchart)
 6. [Authentication](#8-authentication-flowchart)
-7. [`GET /queue`](#9-get-queue-sequence) and [`POST /swipes`](#10-post-swipes-sequence)
-8. Lifecycles: [an item](#11-item-lifecycle-state-diagram) and [a saved entry](#12-saved-entry-extraction-state-diagram)
-9. [Phone sync with dead letters](#13-phone-swipe-sync-sequence-planned) *(planned)*
-10. [Mutation checks](#14-mutation-checks-scriptsmutantspy-flowchart) and the [development loop](#15-development-loop-flowchart)
+7. [`GET /queue`](#9-get-queue-sequence), [`POST /swipes`](#10-post-swipes-sequence) and the [read endpoints](#11-get-feeds-get-saved-and-saved-content-sequence)
+8. Lifecycles: [an item](#12-item-lifecycle-state-diagram) and [a saved entry](#13-saved-entry-extraction-state-diagram)
+9. [Phone sync with dead letters](#14-phone-swipe-sync-sequence-planned) *(planned)*
+10. [Mutation checks](#15-mutation-checks-scriptsmutantspy-flowchart) and the [development loop](#16-development-loop-flowchart)
 
 ---
 
@@ -61,6 +61,8 @@ flowchart TD
     api["api.py<br/>FastAPI app, auth, routes"]
     queue["queue.py<br/>round-robin queue"]
     swipes["swipes.py<br/>record swipes"]
+    saved["saved.py<br/>read-later list, content"]
+    health["feed_health.py<br/>feed status"]
     api_models["api_models.py<br/>(generated)"]
     models["models.py<br/>database tables"]
     db["db.py<br/>SQLite engine"]
@@ -70,7 +72,9 @@ flowchart TD
     spec -. "datamodel-codegen" .-> api_models
     cli --> config & db & feeds & fetcher
     fetcher --> feeds & dedup & text & models
-    api --> config & db & queue & swipes & api_models
+    api --> config & db & feeds & queue & swipes & saved & health & api_models
+    saved --> api_models & models
+    health --> api_models & feeds & models
     queue --> api_models & models
     swipes --> api_models & models
     alembic --> config & db & models
@@ -422,7 +426,50 @@ sequenceDiagram
     end
 ```
 
-## 11. Item lifecycle (state diagram)
+## 11. `GET /feeds`, `GET /saved` and saved content (sequence)
+
+Read-only endpoints. `/feeds` re-reads `feeds.toml` on every request, like the fetcher; saved entries take their display fields from the save swipe, so they survive item pruning.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant phone as Phone
+    participant app as FastAPI app
+    participant health as feed_health.py
+    participant saved as saved.py
+    participant db as SQLite
+
+    Note over phone,db: every request first passes the token check (diagram 8)
+
+    phone->>app: GET /feeds
+    app->>app: load_feeds(feeds.toml)
+    alt feeds.toml invalid
+        app-->>phone: 503 {"detail": "feeds.toml is invalid: ..."}
+    else valid
+        app->>health: feed_health(session, feeds)
+        health->>db: SELECT feed_status
+        health-->>app: one entry per feed in file order (never fetched: nulls, 0 failures)
+        app-->>phone: 200 {"feeds": [...]}
+    end
+
+    phone->>app: GET /saved
+    app->>saved: list_saved(session)
+    saved->>db: saved JOIN swipes ON swipe_id, newest swiped_at first
+    saved-->>app: entries with the save swipe's card fields
+    app-->>phone: 200 {"items": [...]}
+
+    phone->>app: GET /saved/{feed_id}/{item_key}/content
+    app->>app: validate path with the spec's patterns (else 422)
+    app->>saved: saved_content(session, feed_id, item_key)
+    alt not saved
+        app-->>phone: 404
+    else saved
+        saved-->>app: status, and text only when done
+        app-->>phone: 200 {"extraction_status": ..., "text": ...}
+    end
+```
+
+## 12. Item lifecycle (state diagram)
 
 ```mermaid
 stateDiagram-v2
@@ -439,7 +486,7 @@ stateDiagram-v2
     end note
 ```
 
-## 12. Saved entry extraction (state diagram)
+## 13. Saved entry extraction (state diagram)
 
 The table and states exist; the extraction job that moves entries between them comes later in stage 2 *(planned)*.
 
@@ -457,7 +504,7 @@ stateDiagram-v2
     end note
 ```
 
-## 13. Phone swipe sync (sequence, planned)
+## 14. Phone swipe sync (sequence, planned)
 
 How the Android app (stage 5) is designed to use `POST /swipes`, including the dead-letter fallback.
 
@@ -490,7 +537,7 @@ sequenceDiagram
     Note over room: dead letters are retried once after an app update and can be retried or exported from a debug screen
 ```
 
-## 14. Mutation checks: `scripts/mutants.py` (flowchart)
+## 15. Mutation checks: `scripts/mutants.py` (flowchart)
 
 How the curated mutation checks decide each verdict. Details are in the script's docstring and in [`backend/tests/README.md`](../backend/tests/README.md).
 
@@ -515,7 +562,7 @@ flowchart TD
     stale & survived & error & killed & other --> next
 ```
 
-## 15. Development loop (flowchart)
+## 16. Development loop (flowchart)
 
 All development happens on the desktop; the server only pulls committed code.
 

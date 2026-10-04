@@ -308,6 +308,43 @@ MUTANTS = [
         killed_by="test_feed_ids_fit_the_api",
         why="feed ids from feeds.toml must be valid in every card",
     ),
+    # --- read endpoints ---
+    Mutant(
+        name="saved: oldest save first",
+        file="src/swipe_rss/saved.py",
+        original=".order_by(Swipe.swiped_at.desc())",
+        mutated=".order_by(Swipe.swiped_at)",
+        tests="tests/test_api_endpoints.py",
+        killed_by="test_saved_list_shows_the_save_swipes_card_newest_first",
+        why="the read-later list shows the newest save first",
+    ),
+    Mutant(
+        name="saved: text served before extraction is done",
+        file="src/swipe_rss/saved.py",
+        original='text=saved.text if saved.extraction_status == "done" else None,',
+        mutated="text=saved.text,",
+        tests="tests/test_api_endpoints.py",
+        killed_by="test_content_failed_has_error_and_no_text",
+        why="text is only served for a finished extraction",
+    ),
+    Mutant(
+        name="saved: item_key path not validated",
+        file="src/swipe_rss/api.py",
+        original='ItemKeyPath = Annotated[str, Path(pattern=_constraint("item_key", "pattern"))]',
+        mutated="ItemKeyPath = Annotated[str, Path()]",
+        tests="tests/test_api_endpoints.py",
+        killed_by="test_content_rejects_malformed_path",
+        why="path parameters follow the spec's patterns",
+    ),
+    Mutant(
+        name="feeds: invalid feeds.toml is a 500",
+        file="src/swipe_rss/api.py",
+        original="status_code=status.HTTP_503_SERVICE_UNAVAILABLE",
+        mutated="status_code=status.HTTP_500_INTERNAL_SERVER_ERROR",
+        tests="tests/test_api_endpoints.py",
+        killed_by="test_invalid_feeds_file_is_503",
+        why="a broken feeds.toml is reported as 503 with a reason",
+    ),
     # --- spec / generated models ---
     Mutant(
         name="api models: spec edited without regenerating",

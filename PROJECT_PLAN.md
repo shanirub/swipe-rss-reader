@@ -63,6 +63,8 @@ All networking happens over **Tailscale** (WireGuard-based private mesh VPN). No
 - **API conventions** (decided 2026-10-03):
   - `GET /health` is the only unauthenticated endpoint: fixed `{"status": "ok"}`, no DB access, never extended with versions or stats.
   - List responses are wrapped in an object (`{"items": [...]}`, `{"feeds": [...]}`) so fields can be added without breaking clients.
+  - `GET /feeds` returns `503` with the reason when `feeds.toml` is invalid (the fetcher stops then too); the file is re-read on every request.
+  - Path parameters (`feed_id`, `item_key`) are validated with the patterns read from the generated `Card` model, so they follow the spec without being copied.
   - `GET /saved/{feed_id}/{item_key}/content` returns `200` for any saved entry; the client branches on `extraction_status`, `text` is null until `done`; `404` only if not saved.
   - Fields are **required but nullable**: every field is always present, `null` when there is no value. A forgotten field is a `422`, not a silently missing value.
   - **New request fields must be optional** (and old ones never tightened), so older app versions and their queued swipes keep working.

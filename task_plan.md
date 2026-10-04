@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Remaining read endpoints: `GET /feeds` (feed status from `feed_status` + `feeds.toml`), `GET /saved`, `GET /saved/{feed_id}/{item_key}/content`. Before writing contract tests, hold the testing-coverage discussion (Key Question 11). Branch `phase2`.
+All API endpoints exist. Remaining Phase 2 work, suggested order: (1) extraction job + SSRF guard (adds `trafilatura`); (2) `api` Compose service + first stage 2 deploy (merge `phase2` or switch the server); (3) testing-coverage discussion (Key Question 11), then contract + must-fail tests; (4) triage remaining mutmut survivors. Branch `phase2`.
 
 ## Current Phase
 
-Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing, `/queue` + `/swipes`, architecture diagrams done; next `/feeds`, `/saved`)
+Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing, `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved` done; next extraction job)
 
 ## Phases
 
@@ -51,13 +51,13 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 - [x] `swipes` / `saved` migration (`0003`), incl. `items.swiped_at` (2026-10-03)
 - [x] FastAPI app skeleton (2026-10-03): `fastapi`/`uvicorn` deps (`trafilatura` deferred to the extraction job); `api.create_app` factory; FastAPI's `/docs`, `/redoc`, `/openapi.json` off; `GET /health`; `.env.example`
 - [x] Bearer token auth (2026-10-03): app-level dependency + `PUBLIC_PATHS` allowlist, constant-time compare, fails closed without a ≥32-char token
-- [x] Mutation checks as a script (2026-10-03): `backend/scripts/mutants.py`, curated mutants (24 by 2026-10-04), all killed; documented in `backend/tests/README.md`
+- [x] Mutation checks as a script (2026-10-03): `backend/scripts/mutants.py`, curated mutants (28 by 2026-10-04), all killed; documented in `backend/tests/README.md`
 - [x] mutmut adopted as an exploration tool (2026-10-03): `backend/scripts/run_mutmut.py`, config in `pyproject.toml`; gaps it found closed with tests (empty query params, golden dedup keys, redirects, User-Agent, missing author, updated-only date, truncation whitespace)
-- [ ] Triage the remaining mutmut survivors before finishing stage 2 (2026-10-04: 147 total, 79% score; `queue`/`swipes`/`api` already triaged as noise/equivalent in findings.md; open: `fetcher` 108, `models` 5, `text` 4, `feeds` 1)
+- [ ] Triage the remaining mutmut survivors before finishing stage 2 (2026-10-04: 147 total, 79% score; `queue`/`swipes`/`api`/`saved`/`feed_health` already triaged as noise/equivalent in findings.md; open: `fetcher` 108, `models` 5, `text` 4, `feeds` 1)
 - [x] `GET /queue` + `POST /swipes` (2026-10-04): `queue.py` (round-robin), `swipes.py` (idempotent batch, item flag, saved on save), per-request transaction; smoke-tested on a copy of the dev DB
 - [x] Log every `422` on `POST /swipes` (swipe_ids, errors, body) via an exception handler (2026-10-04)
-- [x] Architecture diagrams (2026-10-04): `docs/architecture.md`, 15 Mermaid diagrams, validated with Mermaid 10 and 11
-- [ ] Endpoints: saved list, extracted content, feed status
+- [x] Architecture diagrams (2026-10-04): `docs/architecture.md`, Mermaid diagrams (16 by 2026-10-04, incl. read endpoints), validated with Mermaid 10 and 11
+- [x] Read endpoints (2026-10-04): `GET /feeds` (`feed_health.py`, 503 on invalid `feeds.toml`), `GET /saved` + `GET /saved/{feed_id}/{item_key}/content` (`saved.py`); path params validated with patterns from the generated `Card`; smoke-tested
 - [ ] Extraction job + SSRF guard (adds `trafilatura`)
 - [ ] `api` Compose service on `127.0.0.1:8001`; deploy + `curl` over the tailnet
 - [ ] Contract + must-fail tests (strategy per Key Question 11); document the strategy in `backend/tests/README.md`
@@ -71,6 +71,7 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 ### Phase 4: Deployment & backups (stage 4)
 
 - [ ] Full Compose setup
+- [ ] Record the backend git commit with each stored swipe (`swipes.backend_commit`, nullable; earlier rows NULL). Commit captured at build time; preferred: a `deploy.sh` that computes `git rev-parse HEAD` and passes it as a build arg (alternatives: bare build arg in the deploy command; BuildKit additional context reading `.git`). API logs its commit at startup; local dev stores NULL. Changes the deploy rule to `git pull && ./deploy.sh` (user to confirm then). Parked 2026-10-04.
 - [ ] Encrypted rclone backup to Google Drive
 - **Status:** pending
 
@@ -158,6 +159,8 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | Queue skips (and logs) rows that are not valid `Card`s | One bad row must not block every card; ingest caps make it unexpected |
 | `feeds.toml` ids ≤ 100 chars | Same rule as ingest caps: everything stored must be a valid `Card` |
 | Architecture diagrams as Mermaid in `docs/architecture.md` (rendered by GitHub), part of the mandatory `.md` recheck | Versioned with the code; validated by rendering with Mermaid 10 and 11 |
+| `GET /feeds` → 503 with reason on invalid `feeds.toml` (added to the spec first) | The feed-health screen should show a broken config, not a bare 500 |
+| Path params validated with patterns read from the generated models | No hand-copied rules that could drift from the spec |
 | Phase 2 work on branch `phase2` | User request (2026-10-02) |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 

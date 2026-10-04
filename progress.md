@@ -180,6 +180,17 @@
 - Files created/modified: `docs/architecture.md` (new), `README.md`, `backend/scripts/mutants.py`, plan files
 - `.md` recheck before commit: `task_plan.md` (mutant count, survivor counts from a fresh mutmut run: 552 killed / 147 survived / 79%, diagrams item), `progress.md` statuses, `findings.md` current state + resources, `README.md` (duplicate `docs/` tree entry from my edit; stray `wa` before the title in the working copy, not from me, restored). Committed together with the endpoints and pushed.
 
+### Phase 2: read endpoints `/feeds`, `/saved`, saved content
+
+- **Status:** complete
+- Spec: `/feeds` gets a documented `503` (invalid `feeds.toml`); models unchanged. Backend commit idea parked under Phase 4 (user decision).
+- `feed_health.py` (feeds.toml order joined with `feed_status`), `saved.py` (list via join on the save swipe, newest first; content only `done` returns text), `api.py` routes; path params use the generated `Card`'s pattern/max length.
+- Tests: 15 new in `test_api_endpoints.py` (feeds, saved list, content states, 404, 422). Curated mutants +4 (28). mutmut on new modules: 3 gaps found and closed.
+- Smoke test on a real uvicorn server with a dev-DB copy: as expected (findings.md). A first smoke run failed on my own malformed timestamp (`T010:00`), which the API correctly rejected with 422.
+- README: credit for the planning-with-files skill (user request), new modules in the tree; diagrams updated.
+- `.md` recheck before commit: `task_plan.md` (curated mutants 24 → 28, triaged modules), `progress.md` status. Committed and pushed.
+- Files created/modified: `api/openapi.yaml`, `backend/src/swipe_rss/{feed_health,saved}.py` (new), `backend/src/swipe_rss/api.py`, `backend/tests/test_api_endpoints.py`, `backend/scripts/mutants.py`, `backend/tests/README.md`, `README.md`, `docs/architecture.md`, `PROJECT_PLAN.md`, plan files
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -218,6 +229,9 @@
 | Curated mutants (endpoints) | `scripts/mutants.py queue swipes feeds` | all killed | 7 new, all killed by expected test | pass |
 | mutmut on queue/swipes/api | `scripts/run_mutmut.py queue swipes api` | gaps closed | 79% → 86%, real gaps killed | pass |
 | Endpoint smoke test | uvicorn + copy of dev DB | queue/swipes work end to end | 58 cards round-robin, idempotent swipes, 422 logged | pass |
+| Read endpoint tests | `uv run pytest` | all pass | 123 passed | pass |
+| Read endpoint mutants + mutmut | `mutants.py saved: feeds:`, `run_mutmut.py saved feed_health` | killed / gaps closed | 4/4 killed; 98% after 3 gap tests | pass |
+| Read endpoint smoke test | uvicorn + dev-DB copy + real feeds.toml | as specified | 29 feeds, saves newest first, 200/404/422/401/503 | pass |
 
 ## Error Log
 
@@ -234,8 +248,8 @@
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams done; next: `/feeds`, `/saved` |
+| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved` done; next: extraction job |
 | Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |
-| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams |
+| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content |
