@@ -224,7 +224,9 @@
 - Noted for the user: `.env` on the server is `644` → `chmod 600`.
 - Explained why the token isn't regenerated per container start (the phone holds the same shared secret; short-lived tokens need a refresh flow).
 - Files modified: `backend/Dockerfile`, `PROJECT_PLAN.md`, plan files
-- `.md` recheck before commit: file list in this entry, one unclear line in `findings.md`; READMEs and diagrams unaffected. Committed and pushed.
+- `.md` recheck before commit: file list in this entry, one unclear line in `findings.md`; READMEs and diagrams unaffected. Committed and pushed (`28c1ce8`).
+- Merge: test coverage doesn't gate it (no CI; contract tests and survivor triage finish stage 2, not the merge). PR `phase2` → `main` (user request); merge commit rather than squash (my choice: keeps the step-by-step history). Committed and pushed with the redeploy notes.
+- Redeploy (user-approved, run by Claude): `git pull && docker compose up -d --build`; the three parallel builds succeeded this time. Checks: stack healthy, migrate exit 0 (already at `0003`), files `644` inside the image, 22 items, `.env` now `600` (user), `/health` 200 and `/queue` 401 over the tailnet.
 
 ## Test Results
 
@@ -274,6 +276,7 @@
 | `api` service with token | test project + override | healthy, auth works, loopback only | `(healthy)`; `/health` 200; `/queue` 401 / 200; `/feeds` lists feeds; listen `127.0.0.1:8001` only; scheduler has no token | pass |
 | Image from owner-only sources | `chmod -R go-rwx` copy, build, run as app user | migrate, crontab, extract work | `0003`, crontab valid, extract ok | pass |
 | Stack after Dockerfile fix | test project + token override | healthy, auth works | `(healthy)`, migrate 0, `/queue` 200 | pass |
+| Redeploy with Dockerfile fix | `git pull && docker compose up -d --build` | healthy, files readable | healthy, `644` in image, `/health` 200, `/queue` 401 | pass |
 | Server deploy (stage 2) | `docker compose up -d` on `phase2` | stack healthy, API over tailnet | as expected after the permission fix; first fetch 20 items, 0 failed | pass |
 | Extraction sample, one article per feed | `fetch_html` + trafilatura | most extract | 12 ok, Ars ×9 405 (AWS WAF), mekomit 403 | info |
 
@@ -300,7 +303,7 @@
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy done; next: redeploy Dockerfile fix, then testing-coverage discussion |
+| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy done; `phase2` merged into `main`; next: server back to `main` (user), then testing-coverage discussion (Key Question 11) |
 | Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |

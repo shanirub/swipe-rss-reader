@@ -8,7 +8,7 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Redeploy the Dockerfile permission fix (`git pull && docker compose up -d --build`, after user approval). Then: testing-coverage discussion (Key Question 11) → contract + must-fail tests; triage remaining mutmut survivors. Branch `phase2`.
+User switches the server checkout back to `main` (`git switch main && git pull`; same files, so no rebuild needed). Then: testing-coverage discussion (Key Question 11) → contract + must-fail tests; triage remaining mutmut survivors, on a new branch from `main`.
 
 ## Current Phase
 
@@ -61,7 +61,8 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 - [x] Extraction job + SSRF guard (2026-10-04): `safe_fetch.py` (connect-time IP check, pinned connection, manual redirects, limits), `extraction.py` (claim + lease, backoff 5/30 min, permanent vs temporary), `swipe-rss extract` every minute; `trafilatura` added; tested on real articles (Ars Technica: AWS WAF captcha → always `failed`, see findings)
 - [x] `api` Compose service (2026-10-04): uvicorn on `127.0.0.1:8001`, health check, only `api` gets `.env` (optional for Compose); tested locally: no token → only `api` fails; with token → healthy, 401/200, loopback-only bind, scheduler can't see the token
 - [x] First stage 2 deploy (2026-10-04): server on `phase2`, `.env` by the user; stack healthy, migrations `0001`→`0003` on a fresh DB (old volume lost in a Docker cleanup, no swipes existed), first fetch 29 feeds / 0 failed / 20 items, `/queue` with token over the tailnet OK
-- [x] Dockerfile: `COPY --chmod=a+rX` so the image doesn't inherit the checkout's file modes (deploy broke on files checked out under umask 077); tested with owner-only sources
+- [x] Dockerfile: `COPY --chmod=a+rX` so the image doesn't inherit the checkout's file modes (deploy broke on files checked out under umask 077); tested with owner-only sources; redeployed 2026-10-04 (`28c1ce8`), files `644` in the image
+- [x] Merge `phase2` into `main` via PR (2026-10-04, merge commit; deployed code = `main`). Open stage 2 items continue on a new branch
 - [ ] Contract + must-fail tests (strategy per Key Question 11); document the strategy in `backend/tests/README.md`
 - **Status:** in_progress
 
@@ -167,9 +168,10 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | `is_global` plus explicit category checks and range list | Python counts multicast as global; defence in depth across Python versions |
 | Extraction: attempt counted at claim time + 10-min lease; permanent errors fail at once | Crash-loops use up attempts; overlapping cron runs can't double-process; no hammering of 4xx sites |
 | `.env` optional for Compose, given to `api` only | A missing token stops only the API (fails closed), not fetching; least privilege for the secret |
-| First stage 2 deploy: server checkout switched to `phase2` (not merged to `main` yet) | User choice (2026-10-04); merge to `main` and switch back later |
+| First stage 2 deploy: server checkout switched to `phase2`; merged to `main` the same day | User choice (2026-10-04); server switches back to `main` after the merge |
+| Merge `phase2` before contract tests and survivor triage | Those finish stage 2, they don't gate the merge (no CI); `main` = what's deployed. Merge commit keeps the step-by-step history |
 | Dockerfile `COPY --chmod=a+rX` | Containers run as non-root; the image must not depend on the server checkout's umask |
-| Phase 2 work on branch `phase2` | User request (2026-10-02) |
+| Phase 2 work on branch `phase2` (merged into `main` 2026-10-04) | User request (2026-10-02) |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 
 ## Errors Encountered
