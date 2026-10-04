@@ -27,5 +27,29 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # HTTP API (FastAPI under uvicorn). Published on the host's loopback only; Tailscale Serve
+  # (:8443, set up on the host) forwards to it. Inside the container uvicorn listens on all of
+  # the container's own interfaces, otherwise Docker's port forwarding could not reach it.
+  api:
+    <<: *backend
+    command: ["uvicorn", "swipe_rss.api:create_app", "--factory", "--host", "0.0.0.0", "--port", "8001"]
+    # Only this service gets the token. Optional for Compose on purpose: without .env only the API
+    # fails (it refuses to start without a strong token), the fetcher and extraction keep running.
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "127.0.0.1:8001:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
 volumes:
   data:

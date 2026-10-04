@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-`api` Compose service + first stage 2 deploy: add the service (uvicorn on `127.0.0.1:8001`, `.env` with `SWIPE_RSS_API_TOKEN` on the server, created by the user), merge `phase2` or switch the server checkout, deploy after user approval, `curl` over the tailnet. Then: testing-coverage discussion (Key Question 11) → contract + must-fail tests; triage remaining mutmut survivors. Branch `phase2`.
+First stage 2 deploy (`api` service added and tested locally): user switches the server checkout to `phase2` and creates `.env` with `SWIPE_RSS_API_TOKEN`; deploy after user approval, `curl` over the tailnet. Then: testing-coverage discussion (Key Question 11) → contract + must-fail tests; triage remaining mutmut survivors. Branch `phase2`.
 
 ## Current Phase
 
-Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing, `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard done; next `api` Compose service + deploy)
+Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing, `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service done; next first stage 2 deploy)
 
 ## Phases
 
@@ -59,7 +59,8 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 - [x] Architecture diagrams (2026-10-04): `docs/architecture.md`, Mermaid diagrams (18 by 2026-10-04, incl. read endpoints, extraction job, SSRF guard), validated with Mermaid 10 and 11
 - [x] Read endpoints (2026-10-04): `GET /feeds` (`feed_health.py`, 503 on invalid `feeds.toml`), `GET /saved` + `GET /saved/{feed_id}/{item_key}/content` (`saved.py`); path params validated with patterns from the generated `Card`; smoke-tested
 - [x] Extraction job + SSRF guard (2026-10-04): `safe_fetch.py` (connect-time IP check, pinned connection, manual redirects, limits), `extraction.py` (claim + lease, backoff 5/30 min, permanent vs temporary), `swipe-rss extract` every minute; `trafilatura` added; tested on real articles (Ars Technica: AWS WAF captcha → always `failed`, see findings)
-- [ ] `api` Compose service on `127.0.0.1:8001`; deploy + `curl` over the tailnet
+- [x] `api` Compose service (2026-10-04): uvicorn on `127.0.0.1:8001`, health check, only `api` gets `.env` (optional for Compose); tested locally: no token → only `api` fails; with token → healthy, 401/200, loopback-only bind, scheduler can't see the token
+- [ ] First stage 2 deploy: server `.env` (user), server checkout switched to `phase2` (user), deploy after approval, `curl` over the tailnet
 - [ ] Contract + must-fail tests (strategy per Key Question 11); document the strategy in `backend/tests/README.md`
 - **Status:** in_progress
 
@@ -164,6 +165,8 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | SSRF check inside the connection (custom httpcore network backend), connect to the checked IP | Closes the DNS-rebinding window of resolve-then-connect; TLS still verifies the hostname |
 | `is_global` plus explicit category checks and range list | Python counts multicast as global; defence in depth across Python versions |
 | Extraction: attempt counted at claim time + 10-min lease; permanent errors fail at once | Crash-loops use up attempts; overlapping cron runs can't double-process; no hammering of 4xx sites |
+| `.env` optional for Compose, given to `api` only | A missing token stops only the API (fails closed), not fetching; least privilege for the secret |
+| First stage 2 deploy: server checkout switched to `phase2` (not merged to `main` yet) | User choice (2026-10-04); merge to `main` and switch back later |
 | Phase 2 work on branch `phase2` | User request (2026-10-02) |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 
@@ -180,6 +183,7 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | Guard test made a real network connection when the guard was mutated (2026-10-04) | 1 | The socket call is replaced in that test too; no test may reach the network |
 | Test URL assumed invalid caused a real DNS lookup (2026-10-04) | 1 | Replaced with URLs that fail while parsing |
 | My `pkill -f` cleanup matched its own shell and killed it (2026-10-04) | 1 | Harmless (background loop stopped anyway); don't `pkill -f` patterns contained in the same command |
+| `invalid project name " swipe-rss-apitest"` (2026-10-04) | 1 | zsh doesn't word-split `$P="-p name"`; used `COMPOSE_PROJECT_NAME` |
 | Route-auth test passed with an unprotected endpoint (2026-10-03) | 1 | FastAPI 0.142 `include_router` hides routes from `app.routes`, so the test enumerated nothing; redesigned (app-level auth, routes on the app, test asserts it sees `/health`) |
 
 ## Notes

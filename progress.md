@@ -205,6 +205,15 @@
 - `.md` recheck before commit: diagram counts (`task_plan.md`, `findings.md`), triaged modules, 4 errors added to both error tables, status lines. Committed and pushed.
 - Files created/modified: `backend/src/swipe_rss/{safe_fetch,extraction}.py` (new), `backend/src/swipe_rss/cli.py`, `backend/crontab`, `backend/pyproject.toml`, `backend/uv.lock`, `backend/tests/{test_safe_fetch,test_extraction}.py` (new), `backend/scripts/mutants.py`, `backend/tests/README.md`, `README.md`, `docs/architecture.md`, `PROJECT_PLAN.md`, plan files
 
+### Phase 2: `api` Compose service
+
+- **Status:** complete
+- `compose.yaml`: `api` service (same image, uvicorn `--factory` on 0.0.0.0:8001 inside, published `127.0.0.1:8001`), `env_file: .env` with `required: false`, Docker health check on `/health`, `restart: unless-stopped`, after `migrate`.
+- Local test under a separate Compose project (dev volumes untouched), throwaway token in a scratchpad override file: see Test Results.
+- Docs: PROJECT_PLAN (services), README (tree, deploy note), architecture system diagram no longer "planned".
+- Files modified: `compose.yaml`, `PROJECT_PLAN.md`, `README.md`, `docs/architecture.md`, plan files
+- `.md` recheck before commit: `findings.md` (current state, `compose.yaml` resource), `task_plan.md` (server switches to `phase2`: user choice; zsh error row), `docs/architecture.md` (api reads `feeds.toml`; cli has `extract`), `README.md` (cli line). Diagrams revalidated. Committed and pushed.
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -249,6 +258,8 @@
 | SSRF guard + extraction tests | `uv run pytest` | all pass | 206 passed | pass |
 | SSRF/extraction curated mutants | `mutants.py ssrf extraction` | all killed | 7/7 killed | pass |
 | Real extraction | `swipe-rss extract` on dev-DB copy | saved articles extracted | 2/2 done (Wired, HTTPS) | pass |
+| `api` service without token | `docker compose up` (test project) | only `api` fails, others run | `api` restarting with "must be set to at least 32 characters"; migrate exited 0; scheduler up | pass |
+| `api` service with token | test project + override | healthy, auth works, loopback only | `(healthy)`; `/health` 200; `/queue` 401 / 200; `/feeds` lists feeds; listen `127.0.0.1:8001` only; scheduler has no token | pass |
 | Extraction sample, one article per feed | `fetch_html` + trafilatura | most extract | 12 ok, Ars ×9 405 (AWS WAF), mekomit 403 | info |
 
 ## Error Log
@@ -265,13 +276,14 @@
 | 2026-10-04 | Mutant run took 283 s: guard test opened a real network connection | 1 | Socket call replaced in that test (`no_real_connections`) |
 | 2026-10-04 | Invalid-URL test made a real DNS lookup (`http://[not-an-ip/` is accepted by httpx) | 1 | URLs that fail at parse time instead |
 | 2026-10-04 | `pkill -f` cleanup killed its own shell (exit 144) | 1 | Pattern was part of the same command line; avoid that |
+| 2026-10-04 | `invalid project name " swipe-rss-apitest"` | 1 | zsh doesn't word-split `$P="-p name"`; used `COMPOSE_PROJECT_NAME` instead |
 
 ## 5-Question Reboot Check
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard done; next: `api` Compose service + deploy |
+| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service done; next: first stage 2 deploy |
 | Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |
-| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard |
+| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard; `api` Compose service |

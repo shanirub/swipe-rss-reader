@@ -96,7 +96,7 @@ All networking happens over **Tailscale** (WireGuard-based private mesh VPN). No
 
 ### Scheduling
 
-- **Dedicated scheduler container** (supercronic) runs the fetcher **every 15 minutes** (`backend/crontab`). A one-shot **`migrate`** Compose service runs `alembic upgrade head` first; other services start only after it completes, so migrations never race. This keeps scheduling inside Compose and isolates fetch failures from the API.
+- **Dedicated scheduler container** (supercronic) runs the fetcher **every 15 minutes** (`backend/crontab`). A one-shot **`migrate`** Compose service runs `alembic upgrade head` first; other services start only after it completes, so migrations never race. This keeps scheduling inside Compose and isolates fetch failures from the API. The **`api`** service (same image) runs uvicorn, published on `127.0.0.1:8001` only, with a Docker health check on `/health`. Only `api` reads `.env` (the token); `.env` is optional for Compose, so a missing token stops just the API (it fails closed) while fetching and extraction keep running.
 - The same container runs the **extraction job** every minute (see Content extraction) and, from stage 3, the pruning job.
 
 ### Feeds

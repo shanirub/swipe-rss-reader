@@ -22,7 +22,7 @@ The three tracking files (`task_plan.md`, `progress.md`, `findings.md`) and the 
 ├── task_plan.md             execution tracking (phases, next step, decisions)    ┐ planning-with-files
 ├── progress.md              session log, test results, errors                   │ (Claude Code skill)
 ├── findings.md              research notes, server inventory                    ┘
-├── compose.yaml             Docker Compose: migrate + scheduler (API service from stage 2)
+├── compose.yaml             Docker Compose: migrate, scheduler, api (127.0.0.1:8001)
 ├── .env.example             template for .env (API token); .env itself is never committed
 ├── docs/
 │   ├── architecture.md      diagrams: system, modules, schema, flows, lifecycles
@@ -44,7 +44,7 @@ The three tracking files (`task_plan.md`, `progress.md`, `findings.md`) and the 
     │   ├── feed_health.py   per-feed fetch health for GET /feeds
     │   ├── extraction.py    extraction job: saved articles → text (trafilatura), retries
     │   ├── safe_fetch.py    SSRF guard: fetches untrusted URLs only from public addresses
-    │   ├── cli.py           `swipe-rss` command (e.g. `swipe-rss fetch`)
+    │   ├── cli.py           `swipe-rss` command: `fetch`, `extract`
     │   ├── config.py        settings from environment variables
     │   ├── db.py            SQLite engine: WAL, busy_timeout, BEGIN IMMEDIATE
     │   ├── models.py        database tables (SQLAlchemy, STRICT)
@@ -75,4 +75,4 @@ uv run python scripts/run_mutmut.py                                     # genera
 docker compose up --build                                               # run the stack locally (from the repo root)
 ```
 
-Deploy on the server: `git pull && docker compose up -d --build`.
+Deploy on the server: `git pull && docker compose up -d --build`. The `api` service needs `.env` (see `.env.example`) with `SWIPE_RSS_API_TOKEN`; without it only the API refuses to start.

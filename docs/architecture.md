@@ -32,7 +32,7 @@ flowchart LR
     subgraph server["my-first-server: Docker Compose"]
         migrate["migrate container<br/>alembic upgrade head, one-shot"]
         serve["Tailscale Serve :8443<br/>HTTPS, MagicDNS certificate"]
-        api["api container<br/>uvicorn + FastAPI on 127.0.0.1:8001<br/>(Compose service planned)"]
+        api["api container<br/>uvicorn + FastAPI on 127.0.0.1:8001"]
         db[("SQLite in named volume<br/>/data/swipe_rss.db")]
         sched["scheduler container<br/>supercronic: fetch every 15 min,<br/>extract every minute"]
         cfg[/"config/feeds.toml<br/>read-only bind mount"/]
@@ -44,6 +44,7 @@ flowchart LR
     api -- "read / write" --> db
     sched -- "write items" --> db
     sched -- "re-read every run" --> cfg
+    api -- "re-read per GET /feeds" --> cfg
     sched -- "feeds: conditional GET<br/>articles: via SSRF guard" --> feeds
 ```
 
@@ -54,7 +55,7 @@ Arrows point from a module to the modules it imports. `api_models.py` is generat
 ```mermaid
 flowchart TD
     spec[/"api/openapi.yaml<br/>(hand-written contract)"/]
-    cli["cli.py<br/>swipe-rss fetch"]
+    cli["cli.py<br/>swipe-rss fetch, extract"]
     fetcher["fetcher.py<br/>fetch run"]
     feeds["feeds.py<br/>feeds.toml loader"]
     dedup["dedup.py<br/>dedup keys"]
