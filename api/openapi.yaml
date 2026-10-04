@@ -1,0 +1,454 @@
+openapi: 3.1.0
+info:
+  title: Swipe RSS API
+  version: 0.1.0
+  description: |
+    Single source of truth for the backend <-> Android interface (PROJECT_PLAN.md §3).
+    The backend's Pydantic API models are generated from this file; edit here first.
+
+    Conventions:
+    - Timestamps are RFC 3339 with an explicit offset; the server returns UTC.
+    - An item (article) is identified by `(feed_id, item_key)`.
+    - Request bodies reject unknown fields (`additionalProperties: false`).
+    - Fields are required but nullable: always present, `null` when there is no value.
+    - Evolution: new request fields must be optional; existing request rules are never tightened
+      (swipes queued on the phone must stay valid).
+    - Only `/health` is unauthenticated.
+servers:
+  - url: https://my-first-server.porcupine-celsius.ts.net:8443
+    description: Tailscale Serve (tailnet only)
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness check (no auth)
+      description: For curl smoke tests and container health checks. Reveals nothing but "ok".
+      security: []
+      responses:
+        "200":
+          description: Server is up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+
+  /queue:
+    get:
+      operationId: getQueue
+      summary: Next unswiped cards
+      description: |
+        Round-robin across feeds, oldest first within each feed (PROJECT_PLAN.md §3 Queue ordering).
+        Stateless: cards already delivered but not yet swiped (or whose swipes haven't synced)
+        are returned again; the client deduplicates by `(feed_id, item_key)`.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: Up to `limit` cards (possibly none)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /swipes:
+    post:
+      operationId: postSwipes
+      summary: Record a batch of swipes
+      description: |
+        Idempotent on `swipe_id`: a swipe already stored is counted as a duplicate, never an error,
+        so the whole batch can always be resent. A swipe whose item still exists flags it as swiped
+        (it leaves the queue). A `save` swipe also creates the saved entry (one per article).
+        The batch is validated as a whole: one invalid swipe rejects the entire request (422).
+        Client contract: on 422, resend the batch one swipe at a time; a swipe rejected alone goes to
+        a local dead-letter store and is not resent automatically.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SwipeBatch"
+      responses:
+        "200":
+          description: All swipes stored or already present
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SwipeBatchResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /saved:
+    get:
+      operationId: listSaved
+      summary: Read-later list
+      description: Newest save first. No pagination; retention keeps the list to about two weeks of saves.
+      responses:
+        "200":
+          description: Saved entries without the extracted text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /saved/{feed_id}/{item_key}/content:
+    get:
+      operationId: getSavedContent
+      summary: Extracted article text of a saved entry
+      description: |
+        Always 200 for an existing saved entry; `text` is null until extraction is `done`.
+        On `failed`, the client offers "couldn't extract — open original" (Custom Tabs).
+      parameters:
+        - $ref: "#/components/parameters/FeedIdPath"
+        - $ref: "#/components/parameters/ItemKeyPath"
+      responses:
+        "200":
+          description: Extraction state and, when done, the text
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SavedContent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /feeds:
+    get:
+      operationId: listFeeds
+      summary: Per-feed health
+      description: |
+        One entry per feed currently in feeds.toml, in file order. Timestamps are null until the
+        first fetch of that feed. Distinguishes a broken fetcher (`last_success_at` old) from a
+        quiet source (`last_new_item_at` old).
+      responses:
+        "200":
+          description: Feed status list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: feeds.toml is invalid (the fetcher is not running either); `detail` says why
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Static token from the server's .env; compared in constant time.
+
+  parameters:
+    FeedIdPath:
+      name: feed_id
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/FeedId"
+    ItemKeyPath:
+      name: item_key
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/ItemKey"
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid bearer token
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            const: Bearer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: No such resource
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ValidationFailed:
+      description: Request failed validation (FastAPI's error format)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/HTTPValidationError"
+
+  schemas:
+    # --- shared value types ---
+    FeedId:
+      type: string
+      description: Stable feed slug from feeds.toml.
+      pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+      maxLength: 100
+    ItemKey:
+      type: string
+      description: The item's dedup key; `<rule>:<sha256 hex>`. Opaque to the client.
+      pattern: "^(guid|link|hash):[0-9a-f]{64}$"
+    Action:
+      type: string
+      enum: [never, save, read_now]
+    ExtractionStatus:
+      type: string
+      enum: [pending, done, failed]
+
+    # --- cards ---
+    Card:
+      type: object
+      description: |
+        An item as served by the queue. Sent back unchanged inside each swipe, so the swipe log
+        stores exactly what was displayed. The fetcher enforces the same length limits at ingest
+        (truncating, or nulling an oversized link), so every served card is a valid swipe card.
+      additionalProperties: false
+      required: [feed_id, item_key, headline, summary, link, published_at, fetched_at, author, tags]
+      properties:
+        feed_id:
+          $ref: "#/components/schemas/FeedId"
+        item_key:
+          $ref: "#/components/schemas/ItemKey"
+        headline:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        summary:
+          type: string
+          description: Plain text; may be empty.
+          maxLength: 2000
+        link:
+          type: [string, "null"]
+          description: Normalized article URL; null if missing or longer than the limit.
+          maxLength: 4096
+        published_at:
+          type: [string, "null"]
+          format: date-time
+        fetched_at:
+          type: string
+          format: date-time
+        author:
+          type: [string, "null"]
+          maxLength: 500
+        tags:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            maxLength: 200
+
+    QueueResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Card"
+
+    # --- swipes ---
+    Swipe:
+      type: object
+      additionalProperties: false
+      required: [swipe_id, action, swiped_at, tz_offset_minutes, time_to_swipe_ms, app_version, card]
+      properties:
+        swipe_id:
+          type: string
+          format: uuid
+          description: Generated on the phone at swipe time; idempotency key.
+        action:
+          $ref: "#/components/schemas/Action"
+        swiped_at:
+          type: string
+          format: date-time
+          description: Phone clock; must include an offset.
+        tz_offset_minutes:
+          type: integer
+          minimum: -840
+          maximum: 840
+          description: Phone's UTC offset at swipe time.
+        time_to_swipe_ms:
+          type: [integer, "null"]
+          minimum: 0
+          description: How long the card was on screen; null if unknown.
+        app_version:
+          type: integer
+          minimum: 1
+          description: App versionCode.
+        card:
+          $ref: "#/components/schemas/Card"
+
+    SwipeBatch:
+      type: object
+      additionalProperties: false
+      required: [swipes]
+      properties:
+        swipes:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/Swipe"
+
+    SwipeBatchResult:
+      type: object
+      required: [stored, duplicates]
+      properties:
+        stored:
+          type: integer
+          minimum: 0
+          description: Swipes newly stored by this request.
+        duplicates:
+          type: integer
+          minimum: 0
+          description: Swipes already stored earlier (by `swipe_id`).
+
+    # --- saved ---
+    SavedEntry:
+      type: object
+      required: [feed_id, item_key, headline, summary, link, published_at, saved_at, extraction_status, read_at]
+      properties:
+        feed_id:
+          $ref: "#/components/schemas/FeedId"
+        item_key:
+          $ref: "#/components/schemas/ItemKey"
+        headline:
+          type: string
+        summary:
+          type: string
+        link:
+          type: [string, "null"]
+        published_at:
+          type: [string, "null"]
+          format: date-time
+        saved_at:
+          type: string
+          format: date-time
+          description: "`swiped_at` of the save swipe."
+        extraction_status:
+          $ref: "#/components/schemas/ExtractionStatus"
+        read_at:
+          type: [string, "null"]
+          format: date-time
+          description: Always null until stage 6.
+
+    SavedListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SavedEntry"
+
+    SavedContent:
+      type: object
+      required: [extraction_status, text, extracted_at, last_error]
+      properties:
+        extraction_status:
+          $ref: "#/components/schemas/ExtractionStatus"
+        text:
+          type: [string, "null"]
+          description: Extracted plain text; non-null only when `done`. May be teaser-only for paywalled pages.
+        extracted_at:
+          type: [string, "null"]
+          format: date-time
+        last_error:
+          type: [string, "null"]
+
+    # --- feeds ---
+    FeedStatus:
+      type: object
+      required:
+        [feed_id, name, url, last_attempt_at, last_success_at, last_new_item_at, last_error, consecutive_failures]
+      properties:
+        feed_id:
+          $ref: "#/components/schemas/FeedId"
+        name:
+          type: [string, "null"]
+        url:
+          type: string
+        last_attempt_at:
+          type: [string, "null"]
+          format: date-time
+        last_success_at:
+          type: [string, "null"]
+          format: date-time
+        last_new_item_at:
+          type: [string, "null"]
+          format: date-time
+        last_error:
+          type: [string, "null"]
+        consecutive_failures:
+          type: integer
+          minimum: 0
+
+    FeedListResponse:
+      type: object
+      required: [feeds]
+      properties:
+        feeds:
+          type: array
+          items:
+            $ref: "#/components/schemas/FeedStatus"
+
+    # --- misc ---
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          const: ok
+
+    Error:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
+
+    HTTPValidationError:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            required: [loc, msg, type]
+            properties:
+              loc:
+                type: array
+                items:
+                  type: [string, integer]
+              msg:
+                type: string
+              type:
+                type: string

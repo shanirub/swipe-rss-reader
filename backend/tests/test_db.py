@@ -29,3 +29,12 @@ def test_transactions_take_write_lock_immediately(engine, db_path):
                 other.execute("BEGIN IMMEDIATE")
         finally:
             other.close()
+
+
+def test_every_table_is_strict(engine):
+    with engine.connect() as conn:
+        rows = conn.exec_driver_sql("PRAGMA table_list").all()  # (schema, name, type, ncol, wr, strict)
+    tables = {r[1]: r[5] for r in rows if r[0] == "main" and r[2] == "table" and not r[1].startswith("sqlite_")}
+    tables.pop("alembic_version")  # Alembic's own bookkeeping table
+    assert set(tables) == {"feed_status", "items", "tombstones", "swipes", "saved"}
+    assert all(tables.values()), tables

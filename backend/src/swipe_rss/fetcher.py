@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from swipe_rss.dedup import dedup_key, normalize_link
 from swipe_rss.feeds import Feed, FeedsFile
 from swipe_rss.models import FeedStatus, Item, Tombstone
-from swipe_rss.text import html_to_text
+from swipe_rss.text import html_to_text, truncate
 
 log = logging.getLogger(__name__)
 
@@ -28,7 +28,15 @@ USER_AGENT = "swipe-rss-reader/0.1 (+https://github.com/shanirub/swipe-rss-reade
 TIMEOUT = httpx.Timeout(20.0)
 MAX_FEED_BYTES = 10 * 1024 * 1024
 CONCURRENCY = 5
+# Card limits: every stored item must be a valid Card in api/openapi.yaml, otherwise a swipe on it
+# would be rejected forever (PROJECT_PLAN.md §3 Swipe recording). Keep <= the spec's limits;
+# tests/test_fetcher.py checks this against the generated models.
+HEADLINE_MAX_CHARS = 1000
 SUMMARY_MAX_CHARS = 2000
+AUTHOR_MAX_CHARS = 500
+LINK_MAX_CHARS = 4096  # longer links are dropped: a truncated URL is broken
+TAGS_MAX = 50
+TAG_MAX_CHARS = 200
 ERROR_MAX_CHARS = 1000
 
 
@@ -78,27 +86,30 @@ def parse_entries(feed: Feed, body: bytes, response_headers: dict[str, str]) -> 
 
     items = []
     for entry in parsed.entries:
-        headline = html_to_text(entry.get("title", ""))
-        if not headline:
+        title = html_to_text(entry.get("title", ""))
+        if not title:
             continue  # nothing to show on a card
         raw_link = entry.get("link")
         link = normalize_link(raw_link) if raw_link else None
+        author = (entry.get("author") or "").strip()
+        tags = [t["term"] for t in entry.get("tags", []) if t.get("term")]
         summary_html = entry.get("summary") or (entry.get("content") or [{}])[0].get("value", "")
         items.append(
             ParsedItem(
                 dedup_key=dedup_key(
                     guid=entry.get("id"),
+                    # Full link and title: the item's identity must not depend on the card limits.
                     link=link,
-                    title=headline,
+                    title=title,
                     published=entry.get("published") or entry.get("updated"),
                     mode=feed.dedup,
                 ),
-                headline=headline,
+                headline=truncate(title, HEADLINE_MAX_CHARS),
                 summary=html_to_text(summary_html, max_chars=SUMMARY_MAX_CHARS),
-                link=link,
+                link=link if link and len(link) <= LINK_MAX_CHARS else None,
                 published_at=_entry_time(entry),
-                author=entry.get("author") or None,
-                tags=[t["term"] for t in entry.get("tags", []) if t.get("term")],
+                author=truncate(author, AUTHOR_MAX_CHARS) if author else None,
+                tags=[truncate(t, TAG_MAX_CHARS) for t in tags[:TAGS_MAX]],
             )
         )
     return items

@@ -8,10 +8,13 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.20.0",
+    "fastapi>=0.142.2",
     "feedparser>=6.0.14",
     "httpx>=0.28.1",
     "pydantic>=2.13.5",
     "sqlalchemy>=2.1.2",
+    "trafilatura>=2.3.0",
+    "uvicorn>=0.54.0",
 ]
 
 [project.scripts]
@@ -23,6 +26,8 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "datamodel-code-generator[ruff]>=0.83.0",
+    "mutmut>=3.8.0",
     "pytest>=9.1.1",
     "ruff>=0.16.10",
 ]
@@ -38,3 +43,35 @@ known-third-party = ["alembic"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# API (wire) models generated from the OpenAPI contract. Regenerate after editing the spec:
+#   uv run datamodel-codegen
+# tests/test_api_models.py fails if the committed file is stale.
+[tool.datamodel-codegen]
+input = "../api/openapi.yaml"
+input-file-type = "openapi"
+output = "src/swipe_rss/api_models.py"
+output-model-type = "pydantic_v2.BaseModel"
+target-python-version = "3.14"
+use-annotated = true
+field-constraints = true
+use-standard-collections = true
+use-union-operator = true
+collapse-root-models = true
+disable-timestamp = true
+formatters = ["ruff-check", "ruff-format"]
+custom-file-header = """# GENERATED from api/openapi.yaml by datamodel-codegen. Do not edit.
+# Regenerate: cd backend && uv run datamodel-codegen"""
+
+# mutmut (generated mutation testing), run via scripts/run_mutmut.py. It copies the code into
+# backend/mutants/ (git-ignored) and runs the tests there, so tests that locate repo files by
+# relative path can't work and are deselected.
+[tool.mutmut]
+source_paths = ["src/"]
+do_not_mutate = ["src/swipe_rss/api_models.py"]  # generated from the spec; its tests are in test_api_models.py
+also_copy = ["alembic/", "alembic.ini"]
+pytest_add_cli_args = [
+    "--deselect", "tests/test_api_models.py::test_generated_models_are_fresh",
+    "--deselect", "tests/test_feeds.py::test_repo_feeds_file_is_valid",
+    "-W", "ignore",
+]

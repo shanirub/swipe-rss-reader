@@ -24,7 +24,7 @@ class Defaults(BaseModel):
 class Feed(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    id: str = Field(pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$")
+    id: str = Field(pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$", max_length=100)  # = FeedId in api/openapi.yaml
     url: str = Field(pattern=r"^https?://\S+$")
     name: str | None = None
     dedup: Literal["link"] | None = None
