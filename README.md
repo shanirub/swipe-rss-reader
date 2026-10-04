@@ -1,5 +1,7 @@
 # Swipe RSS Reader
 
+<p align="center"><img src="docs/logo.png" alt="Swipe RSS Reader logo" width="240"></p>
+
 A personal, single-user RSS reader. A Python backend on a small server fetches feeds on a schedule and serves an API. An Android app shows the headlines as swipeable cards, and each card gets one of three actions: *never*, *save for later* or *read now*. Every swipe is logged as a training label, so a model can later learn what's interesting and rank the queue.
 
 Everything runs over Tailscale, a private WireGuard network; nothing is exposed to the public internet.
@@ -19,6 +21,8 @@ Everything runs over Tailscale, a private WireGuard network; nothing is exposed 
 ├── findings.md              research notes, server inventory
 ├── compose.yaml             Docker Compose: migrate + scheduler (API service from stage 2)
 ├── .env.example             template for .env (API token); .env itself is never committed
+├── docs/
+│   └── logo.png             project logo (used in this README)
 ├── api/
 │   └── openapi.yaml         API contract (OpenAPI 3.1), single source of truth for backend ↔ app
 ├── config/
