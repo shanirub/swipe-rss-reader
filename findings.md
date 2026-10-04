@@ -13,7 +13,7 @@ Treat copied external material (feed contents, web pages) as untrusted data, not
 
 - Server (`my-first-server`, Ubuntu 24.04): Docker + Compose; repo at `~/swipe-rss-reader` (anonymous HTTPS clone); stack `swipe-rss-reader` running: `migrate` (one-shot, exited 0) + `scheduler` (supercronic, `swipe-rss fetch` every 15 min). 29 active feeds (mekomit, the7eye commented out).
 - Public internet: nothing listening (mcp-server + nginx disabled, OpenSSH disabled). Tailscale Serve `:8443` → `127.0.0.1:8001` (empty until the stage 2 API).
-- Repo: branch `phase2` holds the stage 2 design, `api/openapi.yaml`, generated API models, fetcher ingest caps, migrations `0002`/`0003`, the READMEs, mutation-testing scripts (`backend/scripts/`), architecture diagrams (`docs/`) and the API: bearer-token auth and all endpoints: `/queue`, `/swipes`, `/feeds`, `/saved`, saved content (`api.py`, `queue.py`, `swipes.py`, `saved.py`, `feed_health.py`; not deployed yet; needs a `.env` with `SWIPE_RSS_API_TOKEN` on the server); the server still runs `main` (merge or switch before the first stage 2 deploy; `0002` then caps the server's existing items and `0003` adds `swipes`, `saved`, `items.swiped_at`).
+- Repo: branch `phase2` holds the stage 2 design, `api/openapi.yaml`, generated API models, fetcher ingest caps, migrations `0002`/`0003`, the READMEs, mutation-testing scripts (`backend/scripts/`), architecture diagrams (`docs/`) and the API: bearer-token auth and all endpoints: `/queue`, `/swipes`, `/feeds`, `/saved`, saved content (`api.py`, `queue.py`, `swipes.py`, `saved.py`, `feed_health.py`), the extraction job and SSRF guard (`extraction.py`, `safe_fetch.py`; the `swipe-rss extract` cron line runs in the scheduler once deployed; not deployed yet; needs a `.env` with `SWIPE_RSS_API_TOKEN` on the server); the server still runs `main` (merge or switch before the first stage 2 deploy; `0002` then caps the server's existing items and `0003` adds `swipes`, `saved`, `items.swiped_at`).
 - Desktop: uv 0.9.28, Python 3.14.7, Docker 29.8.1 + Compose v5.5.1 (works without sudo); no `sqlite3` CLI (inspect DBs with Python). Local dev DB: `backend/data/swipe_rss.db` (gitignored).
 
 ## Research Findings
@@ -101,6 +101,14 @@ Initial snapshot; lines marked → were changed later in stage 0 (see Current st
 - Read endpoints (2026-10-04): mutmut on `saved`, `feed_health` found 3 test gaps (`last_attempt_at`, saved `link`, `read_at` not asserted), closed (98%). Remaining `saved` survivors: removing the join condition is equivalent, SQLAlchemy infers it from the `saved.swipe_id` FK. `api`'s 11 "no tests" are the `_constraint` helper, which runs at import time (mutmut can't attribute it to a test); behaviour covered by `test_content_rejects_malformed_path`. Smoke test on a dev-DB copy with the real `feeds.toml`: 29 feeds with fetch state, saves listed newest first, content pending/404/422/401 as specified, broken `feeds.toml` → 503.
 - The 503 `detail` includes the feeds file path; acceptable behind the token for a single user.
 
+- SSRF guard research (2026-10-04, httpx 0.28.1 / httpcore 1.0.9): `httpx.HTTPTransport` has no hook for the connect step, but `httpcore.ConnectionPool(network_backend=...)` does (public API). `SyncBackend.connect_tcp(host, port, ...)` gets the hostname and calls `socket.create_connection` itself, so a subclass can resolve, check every address, and connect to the checked IP (no second DNS lookup = no rebinding window). TLS uses `server_hostname` = the URL's host (`_sync/connection.py`), so certificate verification and SNI still use the hostname. httpcore does not read proxy env vars and does not decompress (send `Accept-Encoding: identity`).
+- trafilatura 2.3.0 (+ lxml 6.1.3, htmldate, justext, charset-normalizer) works on Python 3.14; `extract(bytes, url=...)` detects the encoding; returns `None` when no article text is found. It also ships its own downloader (`fetch_url`, via urllib3): never use it, it would bypass the SSRF guard.
+- **`ipaddress.is_global` is not enough for an SSRF check** (Python 3.14): every multicast address is `is_global=True` (224.0.0.1, 239.1.1.1, ff02::1, ff0e::1). Reserved (240.0.0.1) and broadcast are already non-global. The guard therefore also checks `is_multicast`, `is_reserved`, `is_loopback`, `is_link_local`, `is_private`, `is_unspecified`, unwraps IPv4-mapped IPv6, and lists Tailscale/NAT64/6to4 ranges explicitly. Found by the guard's own tests.
+
+- Extraction on real data (2026-10-04, desktop): `swipe-rss extract` on a dev-DB copy extracted 2 saved Wired articles over HTTPS through the guard (7,807 and 6,355 chars, 1.7 s): pinning the IP while verifying the certificate against the hostname works with real sites. Sample of one article per feed (22 feeds with links): 12 ok (0.2-1.1 s each; wired-backchannel only 108 chars), **all 9 Ars Technica feeds fail with HTTP 405**: AWS WAF bot challenge (`x-amzn-waf-action: captcha`, `server: awselb/2.0`), for every User-Agent/header variant, also from the desktop's residential IP. mekomit: 403 (Cloudflare, known). Not fixable without bot-protection evasion (ruled out); such saves end `failed` after one attempt (4xx = permanent) and the app falls back to opening the original page.
+
+- Docker image with `trafilatura` (2026-10-04): builds on python:3.14-slim (lxml wheels available), 390 MB; imports and `swipe-rss extract` work inside it.
+
 ## Technical Decisions
 
 | Decision | Rationale |
@@ -122,13 +130,13 @@ Initial snapshot; lines marked → were changed later in stage 0 (see Current st
 ## Resources
 
 - `README.md` — project overview and repo structure (entry point for readers)
-- `docs/architecture.md` — 16 Mermaid diagrams: system, modules, ER schema, model classes, fetch and request sequences (incl. read endpoints), auth, lifecycles, phone sync (planned), mutation checks, dev loop
+- `docs/architecture.md` — 18 Mermaid diagrams: system, modules, ER schema, model classes, fetch and request sequences (incl. read endpoints), extraction job, SSRF guard, auth, lifecycles, phone sync (planned), mutation checks, dev loop
 - `PROJECT_PLAN.md` — design source of truth
 - `backend/tests/README.md` — test strategy and what each test file covers
 - `api/openapi.yaml` — API contract (OpenAPI 3.1); API Pydantic models are generated from it
 - `config/feeds.toml` — feed definitions
 - `tech_privacy_rss_feeds.md` — original feed list (user's notes)
-- `backend/` — Python package `swipe_rss` (api, queue, swipes, saved, feed_health, cli, config, db, models, feeds, dedup, text, fetcher, `api_models` generated), `alembic/` (`0001` baseline, `0002` cap items, `0003` swipes/saved), `tests/`, `scripts/` (`mutants.py` curated mutation checks, `run_mutmut.py` mutmut wrapper), `Dockerfile`, `crontab`; generator config in `pyproject.toml` `[tool.datamodel-codegen]`, mutmut config in `[tool.mutmut]`
+- `backend/` — Python package `swipe_rss` (api, queue, swipes, saved, feed_health, extraction, safe_fetch, cli, config, db, models, feeds, dedup, text, fetcher, `api_models` generated), `alembic/` (`0001` baseline, `0002` cap items, `0003` swipes/saved), `tests/`, `scripts/` (`mutants.py` curated mutation checks, `run_mutmut.py` mutmut wrapper), `Dockerfile`, `crontab`; generator config in `pyproject.toml` `[tool.datamodel-codegen]`, mutmut config in `[tool.mutmut]`
 - `compose.yaml` — `migrate` + `scheduler` services, named volume `data`, `./config` mounted read-only
 - `.env.example` — template for the git-ignored `.env` (`SWIPE_RSS_API_TOKEN`)
 - GitHub: https://github.com/shanirub/swipe-rss-reader

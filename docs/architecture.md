@@ -13,9 +13,10 @@ Contents:
 5. [Fetch run](#6-fetch-run-sequence) and [one feed entry through ingest](#7-one-feed-entry-through-ingest-flowchart)
 6. [Authentication](#8-authentication-flowchart)
 7. [`GET /queue`](#9-get-queue-sequence), [`POST /swipes`](#10-post-swipes-sequence) and the [read endpoints](#11-get-feeds-get-saved-and-saved-content-sequence)
-8. Lifecycles: [an item](#12-item-lifecycle-state-diagram) and [a saved entry](#13-saved-entry-extraction-state-diagram)
-9. [Phone sync with dead letters](#14-phone-swipe-sync-sequence-planned) *(planned)*
-10. [Mutation checks](#15-mutation-checks-scriptsmutantspy-flowchart) and the [development loop](#16-development-loop-flowchart)
+8. [Extraction job](#12-extraction-job-sequence) and the [SSRF guard](#13-ssrf-guard-connect-time-check-flowchart)
+9. Lifecycles: [an item](#14-item-lifecycle-state-diagram) and [a saved entry](#15-saved-entry-extraction-state-diagram)
+10. [Phone sync with dead letters](#16-phone-swipe-sync-sequence-planned) *(planned)*
+11. [Mutation checks](#17-mutation-checks-scriptsmutantspy-flowchart) and the [development loop](#18-development-loop-flowchart)
 
 ---
 
@@ -25,7 +26,7 @@ Everything runs on one server in Docker Compose. Only Tailscale Serve faces the 
 
 ```mermaid
 flowchart LR
-    feeds(["RSS / Atom feeds<br/>(internet)"])
+    feeds(["RSS / Atom feeds and article pages<br/>(internet)"])
     app["Android app<br/>(stage 5, planned)"]
 
     subgraph server["my-first-server: Docker Compose"]
@@ -33,7 +34,7 @@ flowchart LR
         serve["Tailscale Serve :8443<br/>HTTPS, MagicDNS certificate"]
         api["api container<br/>uvicorn + FastAPI on 127.0.0.1:8001<br/>(Compose service planned)"]
         db[("SQLite in named volume<br/>/data/swipe_rss.db")]
-        sched["scheduler container<br/>supercronic: swipe-rss fetch every 15 min"]
+        sched["scheduler container<br/>supercronic: fetch every 15 min,<br/>extract every minute"]
         cfg[/"config/feeds.toml<br/>read-only bind mount"/]
     end
 
@@ -43,7 +44,7 @@ flowchart LR
     api -- "read / write" --> db
     sched -- "write items" --> db
     sched -- "re-read every run" --> cfg
-    sched -- "conditional GET" --> feeds
+    sched -- "feeds: conditional GET<br/>articles: via SSRF guard" --> feeds
 ```
 
 ## 2. Module dependencies
@@ -63,6 +64,8 @@ flowchart TD
     swipes["swipes.py<br/>record swipes"]
     saved["saved.py<br/>read-later list, content"]
     health["feed_health.py<br/>feed status"]
+    extraction["extraction.py<br/>extraction job"]
+    safe["safe_fetch.py<br/>SSRF guard"]
     api_models["api_models.py<br/>(generated)"]
     models["models.py<br/>database tables"]
     db["db.py<br/>SQLite engine"]
@@ -70,7 +73,9 @@ flowchart TD
     alembic["alembic/<br/>migrations"]
 
     spec -. "datamodel-codegen" .-> api_models
-    cli --> config & db & feeds & fetcher
+    cli --> config & db & feeds & fetcher & extraction
+    extraction --> safe & models & text
+    safe --> fetcher
     fetcher --> feeds & dedup & text & models
     api --> config & db & feeds & queue & swipes & saved & health & api_models
     saved --> api_models & models
@@ -469,7 +474,66 @@ sequenceDiagram
     end
 ```
 
-## 12. Item lifecycle (state diagram)
+## 12. Extraction job (sequence)
+
+`swipe-rss extract`, every minute. The `saved` table is the job queue; network I/O never happens inside a transaction.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant cron as supercronic
+    participant job as extraction.py
+    participant db as SQLite
+    participant guard as safe_fetch.py
+    participant web as Article site
+    participant traf as trafilatura
+
+    cron->>job: swipe-rss extract (every minute)
+    job->>db: claim: up to 5 pending rows that are due (one transaction)
+    Note over job,db: attempts + 1 now, next_attempt_at = now + 10 min (lease against overlapping runs)
+    loop each claimed row
+        alt no link
+            job->>db: failed
+        else link
+            job->>guard: fetch_html(link)
+            guard->>web: GET via checked public IP (diagram 13)
+            alt page fetched
+                web-->>guard: HTML, max 5 MB within 30 s
+                guard-->>job: page
+                job->>traf: extract(page)
+                alt article text found
+                    job->>db: done, text, extracted_at
+                else no text
+                    job->>db: failed
+                end
+            else permanent error (4xx, blocked address, not HTML, bad scheme)
+                job->>db: failed, last_error
+            else temporary error (5xx, timeout, network)
+                job->>db: pending, retry after 5 then 30 min (3rd failure: failed)
+            end
+        end
+    end
+```
+
+## 13. SSRF guard: connect-time check (flowchart)
+
+Runs for the first URL and again for every redirect hop, inside the connection itself.
+
+```mermaid
+flowchart TD
+    url(["URL to fetch (feed link or client snapshot)"]) --> scheme{"scheme http or https?"}
+    scheme -- no --> refuse1["refuse: permanent"]
+    scheme -- yes --> resolve["resolve the hostname ONCE"]
+    resolve --> every{"EVERY resolved address public?<br/>is_global and not multicast, reserved,<br/>loopback, link-local, private, unspecified;<br/>IPv4-mapped unwrapped;<br/>not Tailscale, NAT64, 6to4"}
+    every -- "no (even one)" --> refuse2["refuse: blocked address, permanent"]
+    every -- yes --> connect["connect to the CHECKED IP<br/>(no second DNS lookup)<br/>TLS verified against the hostname"]
+    connect --> response{"response"}
+    response -- "redirect (max 5)" --> scheme
+    response -- "200, HTML" --> read["read body: max 5 MB, 30 s overall"]
+    response -- "error" --> classify["4xx: permanent<br/>5xx, 408, 429, timeouts: temporary"]
+```
+
+## 14. Item lifecycle (state diagram)
 
 ```mermaid
 stateDiagram-v2
@@ -486,16 +550,16 @@ stateDiagram-v2
     end note
 ```
 
-## 13. Saved entry extraction (state diagram)
+## 15. Saved entry extraction (state diagram)
 
-The table and states exist; the extraction job that moves entries between them comes later in stage 2 *(planned)*.
+The extraction job (diagram 12) moves entries between these states.
 
 ```mermaid
 stateDiagram-v2
     [*] --> pending: save swipe stored
     pending --> done: extraction succeeded (text stored)
-    pending --> pending: attempt failed, attempts below 3, retry at next_attempt_at
-    pending --> failed: third attempt failed
+    pending --> pending: temporary failure, retry after 5 then 30 min
+    pending --> failed: third attempt failed, or a permanent error (404, blocked address, not HTML, no text)
     done --> [*]: pruned after 2 weeks (stage 3)
     failed --> [*]: pruned after 2 weeks (stage 3)
     note right of failed
@@ -504,7 +568,7 @@ stateDiagram-v2
     end note
 ```
 
-## 14. Phone swipe sync (sequence, planned)
+## 16. Phone swipe sync (sequence, planned)
 
 How the Android app (stage 5) is designed to use `POST /swipes`, including the dead-letter fallback.
 
@@ -537,7 +601,7 @@ sequenceDiagram
     Note over room: dead letters are retried once after an app update and can be retried or exported from a debug screen
 ```
 
-## 15. Mutation checks: `scripts/mutants.py` (flowchart)
+## 17. Mutation checks: `scripts/mutants.py` (flowchart)
 
 How the curated mutation checks decide each verdict. Details are in the script's docstring and in [`backend/tests/README.md`](../backend/tests/README.md).
 
@@ -562,7 +626,7 @@ flowchart TD
     stale & survived & error & killed & other --> next
 ```
 
-## 16. Development loop (flowchart)
+## 18. Development loop (flowchart)
 
 All development happens on the desktop; the server only pulls committed code.
 

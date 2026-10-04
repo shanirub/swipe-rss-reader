@@ -1,3 +1,5 @@
 # Run by supercronic in the scheduler container.
 # Fetch all feeds every 15 minutes (conditional GET keeps this cheap).
 */15 * * * * swipe-rss fetch
+# Extract the text of saved articles every minute (only due entries; usually nothing to do).
+* * * * * swipe-rss extract

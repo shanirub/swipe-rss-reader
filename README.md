@@ -34,7 +34,7 @@ The three tracking files (`task_plan.md`, `progress.md`, `findings.md`) and the 
 └── backend/                 Python backend (uv project)
     ├── pyproject.toml       dependencies, ruff, pytest, model generator config
     ├── Dockerfile           image for all backend services
-    ├── crontab              schedule run by supercronic in the scheduler container
+    ├── crontab              supercronic schedule: fetch every 15 min, extract every minute
     ├── alembic/             database migrations (SQLite): 0001 baseline, 0002 cap items, 0003 swipes/saved
     ├── src/swipe_rss/
     │   ├── api.py           HTTP API (FastAPI app factory, bearer-token auth, routes)
@@ -42,6 +42,8 @@ The three tracking files (`task_plan.md`, `progress.md`, `findings.md`) and the 
     │   ├── swipes.py        recording swipes: idempotent batch insert, saved entries
     │   ├── saved.py         read-later list and extracted content
     │   ├── feed_health.py   per-feed fetch health for GET /feeds
+    │   ├── extraction.py    extraction job: saved articles → text (trafilatura), retries
+    │   ├── safe_fetch.py    SSRF guard: fetches untrusted URLs only from public addresses
     │   ├── cli.py           `swipe-rss` command (e.g. `swipe-rss fetch`)
     │   ├── config.py        settings from environment variables
     │   ├── db.py            SQLite engine: WAL, busy_timeout, BEGIN IMMEDIATE

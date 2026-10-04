@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-All API endpoints exist. Remaining Phase 2 work, suggested order: (1) extraction job + SSRF guard (adds `trafilatura`); (2) `api` Compose service + first stage 2 deploy (merge `phase2` or switch the server); (3) testing-coverage discussion (Key Question 11), then contract + must-fail tests; (4) triage remaining mutmut survivors. Branch `phase2`.
+`api` Compose service + first stage 2 deploy: add the service (uvicorn on `127.0.0.1:8001`, `.env` with `SWIPE_RSS_API_TOKEN` on the server, created by the user), merge `phase2` or switch the server checkout, deploy after user approval, `curl` over the tailnet. Then: testing-coverage discussion (Key Question 11) → contract + must-fail tests; triage remaining mutmut survivors. Branch `phase2`.
 
 ## Current Phase
 
-Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing, `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved` done; next extraction job)
+Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing, `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard done; next `api` Compose service + deploy)
 
 ## Phases
 
@@ -51,14 +51,14 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 - [x] `swipes` / `saved` migration (`0003`), incl. `items.swiped_at` (2026-10-03)
 - [x] FastAPI app skeleton (2026-10-03): `fastapi`/`uvicorn` deps (`trafilatura` deferred to the extraction job); `api.create_app` factory; FastAPI's `/docs`, `/redoc`, `/openapi.json` off; `GET /health`; `.env.example`
 - [x] Bearer token auth (2026-10-03): app-level dependency + `PUBLIC_PATHS` allowlist, constant-time compare, fails closed without a ≥32-char token
-- [x] Mutation checks as a script (2026-10-03): `backend/scripts/mutants.py`, curated mutants (28 by 2026-10-04), all killed; documented in `backend/tests/README.md`
+- [x] Mutation checks as a script (2026-10-03): `backend/scripts/mutants.py`, curated mutants (35 by 2026-10-04), all killed; documented in `backend/tests/README.md`
 - [x] mutmut adopted as an exploration tool (2026-10-03): `backend/scripts/run_mutmut.py`, config in `pyproject.toml`; gaps it found closed with tests (empty query params, golden dedup keys, redirects, User-Agent, missing author, updated-only date, truncation whitespace)
-- [ ] Triage the remaining mutmut survivors before finishing stage 2 (2026-10-04: 147 total, 79% score; `queue`/`swipes`/`api`/`saved`/`feed_health` already triaged as noise/equivalent in findings.md; open: `fetcher` 108, `models` 5, `text` 4, `feeds` 1)
+- [ ] Triage the remaining mutmut survivors before finishing stage 2 (2026-10-04: 147 total, 79% score; `queue`/`swipes`/`api`/`saved`/`feed_health`/`safe_fetch`/`extraction` already triaged as noise/equivalent in findings.md; open: `fetcher` 108, `models` 5, `text` 4, `feeds` 1)
 - [x] `GET /queue` + `POST /swipes` (2026-10-04): `queue.py` (round-robin), `swipes.py` (idempotent batch, item flag, saved on save), per-request transaction; smoke-tested on a copy of the dev DB
 - [x] Log every `422` on `POST /swipes` (swipe_ids, errors, body) via an exception handler (2026-10-04)
-- [x] Architecture diagrams (2026-10-04): `docs/architecture.md`, Mermaid diagrams (16 by 2026-10-04, incl. read endpoints), validated with Mermaid 10 and 11
+- [x] Architecture diagrams (2026-10-04): `docs/architecture.md`, Mermaid diagrams (18 by 2026-10-04, incl. read endpoints, extraction job, SSRF guard), validated with Mermaid 10 and 11
 - [x] Read endpoints (2026-10-04): `GET /feeds` (`feed_health.py`, 503 on invalid `feeds.toml`), `GET /saved` + `GET /saved/{feed_id}/{item_key}/content` (`saved.py`); path params validated with patterns from the generated `Card`; smoke-tested
-- [ ] Extraction job + SSRF guard (adds `trafilatura`)
+- [x] Extraction job + SSRF guard (2026-10-04): `safe_fetch.py` (connect-time IP check, pinned connection, manual redirects, limits), `extraction.py` (claim + lease, backoff 5/30 min, permanent vs temporary), `swipe-rss extract` every minute; `trafilatura` added; tested on real articles (Ars Technica: AWS WAF captcha → always `failed`, see findings)
 - [ ] `api` Compose service on `127.0.0.1:8001`; deploy + `curl` over the tailnet
 - [ ] Contract + must-fail tests (strategy per Key Question 11); document the strategy in `backend/tests/README.md`
 - **Status:** in_progress
@@ -161,6 +161,9 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | Architecture diagrams as Mermaid in `docs/architecture.md` (rendered by GitHub), part of the mandatory `.md` recheck | Versioned with the code; validated by rendering with Mermaid 10 and 11 |
 | `GET /feeds` → 503 with reason on invalid `feeds.toml` (added to the spec first) | The feed-health screen should show a broken config, not a bare 500 |
 | Path params validated with patterns read from the generated models | No hand-copied rules that could drift from the spec |
+| SSRF check inside the connection (custom httpcore network backend), connect to the checked IP | Closes the DNS-rebinding window of resolve-then-connect; TLS still verifies the hostname |
+| `is_global` plus explicit category checks and range list | Python counts multicast as global; defence in depth across Python versions |
+| Extraction: attempt counted at claim time + 10-min lease; permanent errors fail at once | Crash-loops use up attempts; overlapping cron runs can't double-process; no hammering of 4xx sites |
 | Phase 2 work on branch `phase2` | User request (2026-10-02) |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 
@@ -173,6 +176,10 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | `--check` mutation test reported exit 0 on a stale spec (2026-10-03) | 1 | Measurement error: `$?` came from `tail` in a pipe; without the pipe exit 1 |
 | Constraint test passed with the action CHECK removed (2026-10-03) | 1 | Test reused an existing `swipe_id` (PK clash); fixed with a distinct id |
 | Suite failed after `mutants.py` with no source change (2026-10-03) | 1 | Stale `.pyc` from a same-length mutant restored within one second; script now uses a fresh `PYTHONPYCACHEPREFIX` per test run |
+| Guard design: assumed `is_global` excludes multicast (2026-10-04) | 1 | Guard tests showed multicast is "global" in Python; explicit category checks added |
+| Guard test made a real network connection when the guard was mutated (2026-10-04) | 1 | The socket call is replaced in that test too; no test may reach the network |
+| Test URL assumed invalid caused a real DNS lookup (2026-10-04) | 1 | Replaced with URLs that fail while parsing |
+| My `pkill -f` cleanup matched its own shell and killed it (2026-10-04) | 1 | Harmless (background loop stopped anyway); don't `pkill -f` patterns contained in the same command |
 | Route-auth test passed with an unprotected endpoint (2026-10-03) | 1 | FastAPI 0.142 `include_router` hides routes from `app.routes`, so the test enumerated nothing; redesigned (app-level auth, routes on the app, test asserts it sees `/health`) |
 
 ## Notes

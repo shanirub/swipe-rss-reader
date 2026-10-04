@@ -191,6 +191,20 @@
 - `.md` recheck before commit: `task_plan.md` (curated mutants 24 → 28, triaged modules), `progress.md` status. Committed and pushed.
 - Files created/modified: `api/openapi.yaml`, `backend/src/swipe_rss/{feed_health,saved}.py` (new), `backend/src/swipe_rss/api.py`, `backend/tests/test_api_endpoints.py`, `backend/scripts/mutants.py`, `backend/tests/README.md`, `README.md`, `docs/architecture.md`, `PROJECT_PLAN.md`, plan files
 
+### Phase 2: extraction job + SSRF guard
+
+- **Status:** complete
+- Research first: httpx has no connect hook, httpcore's `network_backend` does; TLS keeps the hostname (findings.md). `trafilatura` 2.3.0 added (works on 3.14, bytes input).
+- `safe_fetch.py`: `check_address` (+ explicit categories), `GuardedBackend` (resolve once, check every address, connect to the checked IP), `fetch_html` (http/https only, manual redirects ≤ 5, timeouts, 30 s deadline, 5 MB, HTML only, identity encoding). `extraction.py` + `swipe-rss extract` + crontab line.
+- Found by the guard's own tests: `is_global` is True for every multicast address → explicit checks added. Found by a mutant run: one test would make a real network connection if the guard broke (283 s) → the socket call is now replaced in that test. Found by mutmut: 13 more gaps (headers, connect timeout, overall deadline, chunk assembly, size/redirect boundaries, https allowed, error classes; job: processing after a success, counters, fetched URL) → tests added; a test URL I assumed invalid made a real DNS lookup → replaced with URLs that fail at parse time.
+- Real run: 2 saved Wired articles extracted over HTTPS through the guard; sample over all feeds: Ars Technica blocked by AWS WAF (405), as recorded in findings.
+- Tests: `test_safe_fetch.py` (70), `test_extraction.py` (13); 206 total. Curated mutants +7 (35). mutmut: safe_fetch 62% → 78%, extraction 85% → 88%; remaining = message texts, header case, redundant defence-in-depth checks.
+- Docs: PROJECT_PLAN implementation notes, README tree, tests README, 2 new diagrams (extraction sequence, guard flowchart; 18 total, validated v10/v11).
+- Docker image builds (390 MB); `trafilatura`/`lxml` import inside it; CLI offers `extract`; crontab has the line.
+- Explained SSRF and DNS rebinding to the user (learning session).
+- `.md` recheck before commit: diagram counts (`task_plan.md`, `findings.md`), triaged modules, 4 errors added to both error tables, status lines. Committed and pushed.
+- Files created/modified: `backend/src/swipe_rss/{safe_fetch,extraction}.py` (new), `backend/src/swipe_rss/cli.py`, `backend/crontab`, `backend/pyproject.toml`, `backend/uv.lock`, `backend/tests/{test_safe_fetch,test_extraction}.py` (new), `backend/scripts/mutants.py`, `backend/tests/README.md`, `README.md`, `docs/architecture.md`, `PROJECT_PLAN.md`, plan files
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -232,6 +246,10 @@
 | Read endpoint tests | `uv run pytest` | all pass | 123 passed | pass |
 | Read endpoint mutants + mutmut | `mutants.py saved: feeds:`, `run_mutmut.py saved feed_health` | killed / gaps closed | 4/4 killed; 98% after 3 gap tests | pass |
 | Read endpoint smoke test | uvicorn + dev-DB copy + real feeds.toml | as specified | 29 feeds, saves newest first, 200/404/422/401/503 | pass |
+| SSRF guard + extraction tests | `uv run pytest` | all pass | 206 passed | pass |
+| SSRF/extraction curated mutants | `mutants.py ssrf extraction` | all killed | 7/7 killed | pass |
+| Real extraction | `swipe-rss extract` on dev-DB copy | saved articles extracted | 2/2 done (Wired, HTTPS) | pass |
+| Extraction sample, one article per feed | `fetch_html` + trafilatura | most extract | 12 ok, Ars ×9 405 (AWS WAF), mekomit 403 | info |
 
 ## Error Log
 
@@ -243,13 +261,17 @@
 | 2026-10-03 | Constraint test passed with the action CHECK removed | 1 | Test reused an existing `swipe_id`, so the insert failed on the PK; fixed with a distinct id, mutation now caught |
 | 2026-10-03 | Route-auth test passed with an unprotected endpoint added | 1 | FastAPI 0.142 hides included routes from `app.routes` → test enumerated nothing; redesigned auth (app-level + allowlist), test now asserts it sees `/health` |
 | 2026-10-03 | Suite failed after running `mutants.py`, no source change | 1 | Stale `.pyc` of a same-length mutant (mtime-seconds + size match); fresh `PYTHONPYCACHEPREFIX` per test run |
+| 2026-10-04 | Guard let multicast through (`is_global` is True for multicast) | 1 | Found by the guard's tests; explicit category checks added |
+| 2026-10-04 | Mutant run took 283 s: guard test opened a real network connection | 1 | Socket call replaced in that test (`no_real_connections`) |
+| 2026-10-04 | Invalid-URL test made a real DNS lookup (`http://[not-an-ip/` is accepted by httpx) | 1 | URLs that fail at parse time instead |
+| 2026-10-04 | `pkill -f` cleanup killed its own shell (exit 144) | 1 | Pattern was part of the same command line; avoid that |
 
 ## 5-Question Reboot Check
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved` done; next: extraction job |
+| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard done; next: `api` Compose service + deploy |
 | Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |
-| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content |
+| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard |
