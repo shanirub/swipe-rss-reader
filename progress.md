@@ -159,6 +159,27 @@
 - Files created/modified: `backend/scripts/run_mutmut.py` (new), `backend/tests/{test_dedup,test_fetcher,test_text}.py`, `backend/pyproject.toml`, `backend/uv.lock`, `backend/.dockerignore`, `.gitignore`, `backend/tests/README.md`, `README.md`, plan files
 - `.md` recheck before commit: fixed stale status lines in `progress.md`, `findings.md` current state + resources, `PROJECT_PLAN.md` tooling line, `task_plan.md` current phase + dev loop. Committed (with the mutation-checks script) and pushed.
 
+## Session: 2026-10-04
+
+### Phase 2: `GET /queue` + `POST /swipes`
+
+- **Status:** complete
+- `swipe_rss/queue.py`: round-robin by feed (window function `row_number() over (partition by feed_id order by age, id)`), oldest first; invalid rows skipped and logged. `swipe_rss/swipes.py`: one transaction per batch, `ON CONFLICT DO NOTHING` on `swipe_id`, flag item (first swipe time kept), saved row on new `save` swipe. `api.py`: `/queue` (`limit` 1..200), `/swipes`, 422 logging handler for `/swipes`.
+- Found while testing: one invalid DB row made the whole queue 500; `feeds.toml` ids had no length limit although the spec allows 100 → queue now skips invalid rows; feed id `max_length=100`.
+- Tests: `tests/test_api_endpoints.py` (queue order/limit/validity, round trip, idempotency, saved rules, pruned item, all-or-nothing 422, malformed/oversized batches, logging, invalid row skipped, feed-id limit, plus mutmut gap tests). Curated mutants +7 (24 total, all killed). mutmut on the new modules: gaps found and closed (79% → 86%).
+- Smoke test on a real uvicorn server with a copy of the dev DB: as expected (findings.md).
+- Files created/modified: `backend/src/swipe_rss/{queue,swipes}.py` (new), `backend/src/swipe_rss/{api,feeds}.py`, `backend/tests/test_api_endpoints.py` (new), `backend/tests/test_feeds.py`, `backend/scripts/mutants.py`, `backend/tests/README.md`, `README.md`, `PROJECT_PLAN.md`, plan files
+
+### Docs: architecture diagrams
+
+- **Status:** complete
+- `docs/architecture.md`: 15 Mermaid diagrams (system overview, module dependencies, ER schema, ORM and API class diagrams, fetch sequence, ingest flowchart, auth flowchart, `/queue` and `/swipes` sequences, item and saved-entry state diagrams, planned phone sync sequence, `mutants.py` flowchart, dev loop). Written from the current code; planned parts marked.
+- Validated: all 15 render with Mermaid 10 and 11 in headless Chrome; two checked visually, one layout fixed.
+- Linked from `README.md`; added to the mandatory `.md` recheck list.
+- Also: `scripts/mutants.py` docstring timing updated (~1 min for 24 mutants).
+- Files created/modified: `docs/architecture.md` (new), `README.md`, `backend/scripts/mutants.py`, plan files
+- `.md` recheck before commit: `task_plan.md` (mutant count, survivor counts from a fresh mutmut run: 552 killed / 147 survived / 79%, diagrams item), `progress.md` statuses, `findings.md` current state + resources, `README.md` (duplicate `docs/` tree entry from my edit; stray `wa` before the title in the working copy, not from me, restored). Committed together with the endpoints and pushed.
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -193,6 +214,10 @@
 | mutmut on all `src/` (scratch copy) | `mutmut run` | measure speed and score | 637 mutants, 5.9 s, 72% killed | info |
 | Gap tests | `uv run pytest` | all pass | 72 passed | pass |
 | mutmut after gap fixes | `scripts/run_mutmut.py --fresh` | targeted gap mutants killed | all killed; 75% score, 6.9 s | pass |
+| Endpoint tests | `uv run pytest` | all pass | 108 passed | pass |
+| Curated mutants (endpoints) | `scripts/mutants.py queue swipes feeds` | all killed | 7 new, all killed by expected test | pass |
+| mutmut on queue/swipes/api | `scripts/run_mutmut.py queue swipes api` | gaps closed | 79% → 86%, real gaps killed | pass |
+| Endpoint smoke test | uvicorn + copy of dev DB | queue/swipes work end to end | 58 cards round-robin, idempotent swipes, 422 logged | pass |
 
 ## Error Log
 
@@ -209,8 +234,8 @@
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut) done; next: endpoints (`/queue`, `/swipes`) |
+| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams done; next: `/feeds`, `/saved` |
 | Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |
-| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found |
+| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams |

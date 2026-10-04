@@ -101,7 +101,7 @@ All networking happens over **Tailscale** (WireGuard-based private mesh VPN). No
 
 - Defined in **`config/feeds.toml`, committed to the repo**. The `config/` **directory** is bind-mounted read-only from the server's checkout into the containers and the file is re-read on every fetch run, so `git pull` applies edits without rebuild or restart. (A single-file bind mount would go stale: `git pull` replaces the file with a new inode.)
 - **TOML**, read with stdlib `tomllib`, validated with Pydantic.
-- Each feed has a **required, stable `id` slug** (never changes), plus `url` and optional `name`. The `id` (not the URL) keys `feed_status` and is the feed identifier stored in the swipe log, so a feed's URL can change without orphaning its history.
+- Each feed has a **required, stable `id` slug** (never changes; at most 100 characters, the API's `FeedId` limit), plus `url` and optional `name`. The `id` (not the URL) keys `feed_status` and is the feed identifier stored in the swipe log, so a feed's URL can change without orphaning its history.
 - `[defaults]` table for global settings; per-feed overrides (e.g., `retention_hours`) live on the feed entry later.
 - **`max_item_age_hours`** (in `[defaults]`, currently 24): the fetcher skips entries published longer ago than this; entries without a date use fetch time. Not tombstoned. Introduced to keep the initial backlog out; revisit with retention (stage 3).
 - **Invalid file → the fetch run aborts and logs a clear error.** A typo must never be interpreted as "all feeds removed".
@@ -164,6 +164,7 @@ Rule: **item properties are captured at swipe time** (items are pruned, so anyth
   - *Stage 2:* the server logs every `422` on `POST /swipes` with the `swipe_id`s, the validation errors and the request body (own data, single user), so rejections show up in `docker compose logs` even if the phone never reports them.
   - *Stage 5:* each dead letter is stored with the `app_version` that failed and its error. On the first start of a new app version, all dead letters are retried once (a release that fixes the cause may first repair stored swipes). A debug screen lists them with **retry** and **export as JSON**. Resending is always safe: dead letters keep their original `swipe_id`.
   - *Stage 8, only if dead letters actually occur:* a deliberately lenient `POST /dead-letters` (any JSON up to a size limit, stored as-is) plus a server command to repair and import them into `swipes`.
+- **Swipe recording details** (implemented 2026-10-04): one transaction per batch; a duplicate `swipe_id` is skipped and the rest of the batch still processed; a swipe for an item that is already gone is stored normally; `items.swiped_at` keeps the first swipe's time; a later non-save swipe does not remove an existing saved entry (undo is stage 8).
 - **Never tighten request validation without considering swipes already queued on phones:** a stricter rule turns them into dead letters. To tighten a limit, lower the ingest cap first, the request limit later.
 - **Append-only log:** no per-item uniqueness. For training, the **latest swipe per item wins**. Undo (stage 8) becomes another event, not a schema change.
 - **Card snapshot:** each swipe carries the item fields the phone received from the queue (`feed_id`, `item_key`, headline, summary, link, `published_at`, `fetched_at`, tags, author); the server stores them as given (Pydantic-validated, length-limited). This makes swipes independent of item pruning (offline for any duration) and makes the label pair with exactly what was displayed. If the item still exists (looked up by `(feed_id, item_key)`), the server also removes it from the queue by setting `items.swiped_at` (a flag, not a delete); the queue serves only rows with `swiped_at IS NULL`, and the pruning job deletes swiped rows later. Flagging keeps stage 8 undo simple: clearing the flag returns the card to the queue, whereas a deleted item could never come back (its key is tombstoned).
@@ -193,6 +194,7 @@ Rule: **item properties are captured at swipe time** (items are pruned, so anyth
 ### Queue ordering (pre-ML)
 
 - **Round-robin across feeds, oldest-first within each feed.** This gives fair exposure, and items are seen before they expire. It will be replaced by ML ranking later.
+- **Round-robin details** (implemented 2026-10-04): each feed's items are ranked by age (`published_at`, or `fetched_at` when the feed gives no date); the queue takes every feed's rank 1, then rank 2, and so on; within a round, older items first. A row that is not a valid `Card` is skipped and logged instead of failing the whole queue.
 - **Queue endpoint semantics:** returns up to `limit` unswiped items. It is stateless: the server doesn't track what the phone already holds, so items fetched earlier but not yet swiped (or whose swipes haven't synced) are returned again; the phone deduplicates by `(feed_id, item_key)`.
 
 ### Observability

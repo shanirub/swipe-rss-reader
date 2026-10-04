@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Endpoints, starting with `GET /queue` and `POST /swipes` (DB session wiring in the app, round-robin queue, idempotent batch insert, `items.swiped_at`, `saved` row on save, 422 logging). Before writing contract tests, hold the testing-coverage discussion (Key Question 11). Branch `phase2`.
+Remaining read endpoints: `GET /feeds` (feed status from `feed_status` + `feeds.toml`), `GET /saved`, `GET /saved/{feed_id}/{item_key}/content`. Before writing contract tests, hold the testing-coverage discussion (Key Question 11). Branch `phase2`.
 
 ## Current Phase
 
-Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing done; next endpoints)
+Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing, `/queue` + `/swipes`, architecture diagrams done; next `/feeds`, `/saved`)
 
 ## Phases
 
@@ -51,11 +51,13 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 - [x] `swipes` / `saved` migration (`0003`), incl. `items.swiped_at` (2026-10-03)
 - [x] FastAPI app skeleton (2026-10-03): `fastapi`/`uvicorn` deps (`trafilatura` deferred to the extraction job); `api.create_app` factory; FastAPI's `/docs`, `/redoc`, `/openapi.json` off; `GET /health`; `.env.example`
 - [x] Bearer token auth (2026-10-03): app-level dependency + `PUBLIC_PATHS` allowlist, constant-time compare, fails closed without a ≥32-char token
-- [x] Mutation checks as a script (2026-10-03): `backend/scripts/mutants.py`, 17 curated mutants, all killed; documented in `backend/tests/README.md`
+- [x] Mutation checks as a script (2026-10-03): `backend/scripts/mutants.py`, curated mutants (24 by 2026-10-04), all killed; documented in `backend/tests/README.md`
 - [x] mutmut adopted as an exploration tool (2026-10-03): `backend/scripts/run_mutmut.py`, config in `pyproject.toml`; gaps it found closed with tests (empty query params, golden dedup keys, redirects, User-Agent, missing author, updated-only date, truncation whitespace)
-- [ ] Triage the remaining mutmut survivors (133, mostly fetcher/api/models; many noise or equivalent) before finishing stage 2
-- [ ] Endpoints: queue, `POST /swipes`, saved list, extracted content, feed status
-- [ ] Log every `422` on `POST /swipes` (swipe_ids, errors, body) via an exception handler
+- [ ] Triage the remaining mutmut survivors before finishing stage 2 (2026-10-04: 147 total, 79% score; `queue`/`swipes`/`api` already triaged as noise/equivalent in findings.md; open: `fetcher` 108, `models` 5, `text` 4, `feeds` 1)
+- [x] `GET /queue` + `POST /swipes` (2026-10-04): `queue.py` (round-robin), `swipes.py` (idempotent batch, item flag, saved on save), per-request transaction; smoke-tested on a copy of the dev DB
+- [x] Log every `422` on `POST /swipes` (swipe_ids, errors, body) via an exception handler (2026-10-04)
+- [x] Architecture diagrams (2026-10-04): `docs/architecture.md`, 15 Mermaid diagrams, validated with Mermaid 10 and 11
+- [ ] Endpoints: saved list, extracted content, feed status
 - [ ] Extraction job + SSRF guard (adds `trafilatura`)
 - [ ] `api` Compose service on `127.0.0.1:8001`; deploy + `curl` over the tailnet
 - [ ] Contract + must-fail tests (strategy per Key Question 11); document the strategy in `backend/tests/README.md`
@@ -152,6 +154,10 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | Curated mutation checks in `backend/scripts/mutants.py`, each mutant naming the test that must kill it | Rerunnable proof that each guard test can fail; KILLED-OTHER catches tests passing for the wrong reason; STALE catches outdated snippets |
 | mutmut as an exploration tool (`scripts/run_mutmut.py`), not a gate; curated `mutants.py` stays the guard list | mutmut finds unknown gaps in seconds but its survivors need triage (noise, equivalent mutants); curated mutants prove specific rules |
 | Golden test pins exact dedup keys | Keys are permanent item identity; any change to the key function must be deliberate and come with a migration plan |
+| Request transaction opened inside each endpoint (`with Session(engine) as s, s.begin()`), not a `yield` dependency | Commit is guaranteed before the response is sent, independent of FastAPI's dependency-teardown timing |
+| Queue skips (and logs) rows that are not valid `Card`s | One bad row must not block every card; ingest caps make it unexpected |
+| `feeds.toml` ids ≤ 100 chars | Same rule as ingest caps: everything stored must be a valid `Card` |
+| Architecture diagrams as Mermaid in `docs/architecture.md` (rendered by GitHub), part of the mandatory `.md` recheck | Versioned with the code; validated by rendering with Mermaid 10 and 11 |
 | Phase 2 work on branch `phase2` | User request (2026-10-02) |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 
@@ -171,6 +177,6 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 - Update phase status as work progresses: `pending` → `in_progress` → `complete`.
 - Re-read `PROJECT_PLAN.md` before each phase; don't re-open settled decisions.
 - Dev loop: edit on desktop → `cd backend && uv run ruff check . && uv run ruff format --check . && uv run pytest` → when guard tests or the code they protect changed: `uv run python scripts/mutants.py` → optional local `docker compose up --build` → **recheck all `.md` files** → commit + push → server `cd ~/swipe-rss-reader && git pull && docker compose up -d --build`.
-- **Mandatory before every commit (user rule, 2026-10-03): recheck all maintained `.md` files for stale or missing data**: `PROJECT_PLAN.md`, `task_plan.md`, `progress.md`, `findings.md`, `README.md`, `backend/tests/README.md`. Read them in full, compare with what changed, fix, then commit. It catches something nearly every time.
+- **Mandatory before every commit (user rule, 2026-10-03): recheck all maintained `.md` files for stale or missing data**: `PROJECT_PLAN.md`, `task_plan.md`, `progress.md`, `findings.md`, `README.md`, `backend/tests/README.md`, `docs/architecture.md` (diagrams must match the code flow). Read them in full, compare with what changed, fix, then commit. It catches something nearly every time.
 - Deploy: Claude runs `cd ~/swipe-rss-reader && git pull && docker compose up -d --build` over Tailscale SSH **only after the user approves that deploy**, then read-only checks (`docker compose ps`, logs, read-only DB queries). Never edit files in the server checkout. Root, Tailscale and system changes go to the user. Note: `srub` is in group `docker` (root-equivalent).
 - Server facts: RSS API URL `https://my-first-server.porcupine-celsius.ts.net:8443` → `127.0.0.1:8001` (nothing listening until stage 2). DB in named volume `swipe-rss-reader_data` at `/data/swipe_rss.db`.

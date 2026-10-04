@@ -10,13 +10,23 @@ no longer lists the included routes in `app.routes`, which tests need to enumera
 """
 
 import hmac
+import json
+import logging
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.orm import Session
 
-from swipe_rss.api_models import Health
+from swipe_rss.api_models import Health, QueueResponse, SwipeBatch, SwipeBatchResult
 from swipe_rss.config import Settings, get_settings
+from swipe_rss.db import make_engine
+from swipe_rss.queue import select_queue
+from swipe_rss.swipes import record_swipes
+
+log = logging.getLogger(__name__)
 
 MIN_TOKEN_LENGTH = 32
 PUBLIC_PATHS = frozenset({"/health"})
@@ -55,8 +65,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         dependencies=[Depends(_require_token(settings.api_token))],
     )
 
+    engine = make_engine(settings.db_path)
+
+    @app.exception_handler(RequestValidationError)
+    async def log_rejected_swipes(request: Request, exc: RequestValidationError):
+        # A rejected swipe batch becomes a dead letter on the phone; log it so it is noticed
+        # here too (PROJECT_PLAN.md §3 Swipe recording). Own data, single user: the body is logged.
+        if request.url.path == "/swipes":
+            body = exc.body if isinstance(exc.body, dict) else {}
+            swipes = body.get("swipes") if isinstance(body.get("swipes"), list) else []
+            ids = [s.get("swipe_id") for s in swipes if isinstance(s, dict)]
+            log.warning(
+                "rejected swipe batch: swipe_ids=%s errors=%s body=%s",
+                ids, json.dumps(exc.errors(), default=str), json.dumps(exc.body, default=str),
+            )  # fmt: skip
+        return await request_validation_exception_handler(request, exc)
+
+    # Endpoints are plain `def`: FastAPI runs them in its thread pool (sync SQLAlchemy, PROJECT_PLAN.md §3).
+    # Each request is one explicit transaction, committed before the response is sent.
+
     @app.get("/health", response_model=Health)
     def get_health() -> Health:
         return Health(status="ok")
+
+    @app.get("/queue", response_model=QueueResponse)
+    def get_queue(limit: Annotated[int, Query(ge=1, le=200)] = 50) -> QueueResponse:
+        with Session(engine) as session, session.begin():
+            return QueueResponse(items=select_queue(session, limit))
+
+    @app.post("/swipes", response_model=SwipeBatchResult)
+    def post_swipes(batch: SwipeBatch) -> SwipeBatchResult:
+        with Session(engine) as session, session.begin():
+            result = record_swipes(session, batch.swipes)
+        return SwipeBatchResult(stored=result.stored, duplicates=result.duplicates)
 
     return app

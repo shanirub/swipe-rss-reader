@@ -22,7 +22,7 @@ HOW TO USE
 
     Run it after changing a guard test or the code a mutant targets, and before relying
     on a guard test you have never seen fail. About 1.5 s per mutant (each run compiles
-    from a fresh bytecode cache, see SAFETY); ~30 s for all of them.
+    from a fresh bytecode cache, see SAFETY); about a minute for all of them.
 
     Adding a mutant: append a Mutant(...) to MUTANTS with the file, the exact original
     snippet, its broken replacement, the test file to run and the name of the test that
@@ -243,6 +243,70 @@ MUTANTS = [
         tests="tests/test_api.py",
         killed_by="test_fastapi_generated_docs_are_off",
         why="the hand-written spec is the only spec served",
+    ),
+    # --- queue and swipes ---
+    Mutant(
+        name="queue: swiped items stay in the queue",
+        file="src/swipe_rss/queue.py",
+        original="        .where(Item.swiped_at.is_(None))\n",
+        mutated="",
+        tests="tests/test_api_endpoints.py",
+        killed_by="test_swipe_round_trip",
+        why="a swiped item leaves the queue",
+    ),
+    Mutant(
+        name="queue: oldest first, no round-robin",
+        file="src/swipe_rss/queue.py",
+        original=".order_by(ranked.c.rank, ranked.c.age, Item.id)",
+        mutated=".order_by(ranked.c.age, Item.id)",
+        tests="tests/test_api_endpoints.py",
+        killed_by="test_queue_is_round_robin_oldest_first",
+        why="the queue is round-robin across feeds",
+    ),
+    Mutant(
+        name="queue: no upper bound on limit",
+        file="src/swipe_rss/api.py",
+        original="Query(ge=1, le=200)",
+        mutated="Query(ge=1)",
+        tests="tests/test_api_endpoints.py",
+        killed_by="test_queue_rejects_bad_limit",
+        why="limit is 1..200 as in the spec",
+    ),
+    Mutant(
+        name="swipes: resend is not idempotent",
+        file="src/swipe_rss/swipes.py",
+        original='            .on_conflict_do_nothing(index_elements=["swipe_id"])\n',
+        mutated="",
+        tests="tests/test_api_endpoints.py",
+        killed_by="test_resent_batch_is_idempotent",
+        why="resending a batch is always safe",
+    ),
+    Mutant(
+        name="swipes: every action creates a saved entry",
+        file="src/swipe_rss/swipes.py",
+        original="        if swipe.action == Action.save:",
+        mutated="        if True:",
+        tests="tests/test_api_endpoints.py",
+        killed_by="test_only_save_creates_a_saved_entry",
+        why="only a save swipe creates a saved entry",
+    ),
+    Mutant(
+        name="swipes: rejected batches not logged",
+        file="src/swipe_rss/api.py",
+        original='        if request.url.path == "/swipes":',
+        mutated='        if request.url.path == "/nothing":',
+        tests="tests/test_api_endpoints.py",
+        killed_by="test_rejected_batches_are_logged",
+        why="a rejected batch (future dead letter) is visible in the server log",
+    ),
+    Mutant(
+        name="feeds: feed id longer than the API allows",
+        file="src/swipe_rss/feeds.py",
+        original="max_length=100)  # = FeedId",
+        mutated="max_length=101)  # = FeedId",
+        tests="tests/test_api_endpoints.py",
+        killed_by="test_feed_ids_fit_the_api",
+        why="feed ids from feeds.toml must be valid in every card",
     ),
     # --- spec / generated models ---
     Mutant(

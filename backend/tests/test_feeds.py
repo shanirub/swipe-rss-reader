@@ -28,6 +28,7 @@ def test_minimal_file(tmp_path):
         "",  # no feeds at all: must not mean "all feeds removed"
         "[[feeds]]\nid = 'a'\nurl = 'https://x'\n[[feeds]]\nid = 'a'\nurl = 'https://y'\n",  # duplicate id
         "[[feeds]]\nid = 'Bad_ID'\nurl = 'https://x'\n",  # not a slug
+        f"[[feeds]]\nid = '{'a' * 101}'\nurl = 'https://x'\n",  # longer than the API allows
         "[[feeds]]\nid = 'a'\nurl = 'ftp://x'\n",  # not http(s)
         "[[feeds]]\nid = 'a'\nurl = 'https://x'\ndedupe = 'link'\n",  # typo'd key
         "[defaults]\nmax_item_age_hour = 24\n[[feeds]]\nid = 'a'\nurl = 'https://x'\n",  # typo'd default

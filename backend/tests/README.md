@@ -18,7 +18,7 @@ The regular tests check the code; the mutation checks check the **tests**. `back
 
 ```sh
 cd backend
-uv run python scripts/mutants.py           # all mutants (~30 s)
+uv run python scripts/mutants.py           # all mutants (~1 min)
 uv run python scripts/mutants.py auth      # only mutants whose name contains "auth"
 uv run python scripts/mutants.py --list    # what exists, without running
 ```
@@ -51,4 +51,5 @@ Surviving mutants need triage: a **real gap** (write a test), **equivalent** (th
 | `test_fetcher.py` | The fetch run end to end: age filter and normalization, rerun inserts nothing, tombstones block re-insertion after pruning, first version wins, same article in two feeds kept twice, conditional GET (304), failing/unparseable/oversized feeds are recorded without stopping the run, redirects are followed, requests send the reader's User-Agent, a missing/blank author becomes null, an Atom entry with only an updated date gets that date. Card limits: fetcher limits ≤ the API spec's limits, an oversized entry becomes a valid `Card`, and a dropped link still determines the item's key. |
 | `test_migrations.py` | Migrations: `models.py` and the migrations describe the same schema (Alembic's comparison; it does not compare CHECK constraints, hence the explicit constraint tests); downgrade to `0002` and upgrade again; `0002` caps items stored before the card limits existed and leaves valid rows untouched; `0003` swipe/saved rows join, and its CHECK and foreign-key constraints reject bad rows. |
 | `test_api.py` | API skeleton and auth: `/health` is public and matches the spec; FastAPI's own `/docs`, `/redoc`, `/openapi.json` are off; the app refuses to start without a ≥32-char token; only `/health` is public, every other route answers 401 without the token (the test asserts it actually sees routes); routers included later are protected too; bad credentials (missing, wrong, prefix, wrong scheme, no scheme) get 401 with `WWW-Authenticate: Bearer` and the spec's `Error` body. |
+| `test_api_endpoints.py` | `GET /queue` and `POST /swipes` against a real migrated database: round-robin order (oldest first, undated items by fetch time), `limit` bounds, served cards are valid swipe cards, a row that isn't a valid card is skipped instead of failing the queue, feed ids fit the API; swipe round trip (stored flat with every field, item flagged not deleted), idempotent resend, a duplicate doesn't stop the rest of the batch, every new swipe counted, one saved entry per article and only for `save`, swipes for pruned items stored, one invalid swipe rejects the whole batch (nothing stored), malformed/oversized batches, a tampered card rejected, rejected batches logged; a swipe flags only its own item (not other items of the feed, not the same article in another feed), the first `swiped_at` is kept. |
 | `test_api_models.py` | `src/swipe_rss/api_models.py` is up to date with `api/openapi.yaml` (runs the generator's `--check`). |

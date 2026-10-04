@@ -9,6 +9,7 @@ Everything runs over Tailscale, a private WireGuard network; nothing is exposed 
 ## Status and design
 
 - **Design, decisions and stages:** [`PROJECT_PLAN.md`](PROJECT_PLAN.md) is the source of truth. §5 lists the stages.
+- **How the code works:** [`docs/architecture.md`](docs/architecture.md) has diagrams of the system, modules, database, request flows and lifecycles.
 - **Current progress:** [`task_plan.md`](task_plan.md) shows which stage is in progress and what comes next. [`progress.md`](progress.md) is the session log and [`findings.md`](findings.md) collects research and server facts.
 
 ## Repository structure
@@ -22,6 +23,7 @@ Everything runs over Tailscale, a private WireGuard network; nothing is exposed 
 ├── compose.yaml             Docker Compose: migrate + scheduler (API service from stage 2)
 ├── .env.example             template for .env (API token); .env itself is never committed
 ├── docs/
+│   ├── architecture.md      diagrams: system, modules, schema, flows, lifecycles
 │   └── logo.png             project logo (used in this README)
 ├── api/
 │   └── openapi.yaml         API contract (OpenAPI 3.1), single source of truth for backend ↔ app
@@ -33,7 +35,9 @@ Everything runs over Tailscale, a private WireGuard network; nothing is exposed 
     ├── crontab              schedule run by supercronic in the scheduler container
     ├── alembic/             database migrations (SQLite): 0001 baseline, 0002 cap items, 0003 swipes/saved
     ├── src/swipe_rss/
-    │   ├── api.py           HTTP API (FastAPI app factory, bearer-token auth)
+    │   ├── api.py           HTTP API (FastAPI app factory, bearer-token auth, routes)
+    │   ├── queue.py         swipe queue: unswiped items, round-robin across feeds
+    │   ├── swipes.py        recording swipes: idempotent batch insert, saved entries
     │   ├── cli.py           `swipe-rss` command (e.g. `swipe-rss fetch`)
     │   ├── config.py        settings from environment variables
     │   ├── db.py            SQLite engine: WAL, busy_timeout, BEGIN IMMEDIATE
