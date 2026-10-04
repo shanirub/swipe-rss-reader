@@ -228,6 +228,27 @@
 - Merge: test coverage doesn't gate it (no CI; contract tests and survivor triage finish stage 2, not the merge). PR `phase2` → `main` (user request); merge commit rather than squash (my choice: keeps the step-by-step history). Committed and pushed with the redeploy notes.
 - Redeploy (user-approved, run by Claude): `git pull && docker compose up -d --build`; the three parallel builds succeeded this time. Checks: stack healthy, migrate exit 0 (already at `0003`), files `644` inside the image, 22 items, `.env` now `600` (user), `/health` 200 and `/queue` 401 over the tailnet.
 
+### Phase 2: merge + contract coverage (Key Question 11, points c + d)
+
+- **Status:** complete
+- PR #1 merged; server back on `main` (user); `phase2` deleted locally and on GitHub (user OK). New branch `stage2-contract-tests`.
+- Testing discussion started: three meanings of "coverage" (lines run: 94%; bugs caught: mutation tests; contract: not measured). Points of KQ 11 reposted for the user. Decision: A (route-set equality) + B1 (recording fixture, full-run check).
+- `tests/contract.py`, hooks in `tests/conftest.py`, `tests/test_contract.py` (13 tests); PyYAML explicit dev dependency; `pythonpath = ["tests"]`.
+- Verified by sabotage (missing 503, undocumented 405, partial run silent); 3 curated mutants (38 total) all killed; mutmut still runs.
+- Files created/modified: `backend/tests/{contract,test_contract}.py` (new), `backend/tests/conftest.py`, `backend/pyproject.toml`, `backend/uv.lock`, `backend/scripts/mutants.py`, `backend/tests/README.md`, `PROJECT_PLAN.md`, plan files
+
+### Testing topic 2 (part 1): the spec's global rules
+
+- **Status:** complete
+- User asked whether "recorder" is a professional term: no, my class name; related terms test spy (Meszaros), instrumentation/monkey patching, API spec coverage, provider-side contract testing. Kept `Recorder`, docstring notes it.
+- Decided (user agreed): wrong method 405, unknown path 404, unknown query parameter 422 (strict, `/health` exempt) as global rules in the spec. Noted the conflict with "never tighten" → recorded as a one-time exception before any client existed.
+- Probed FastAPI first (404/405 bodies and `Allow`, scope route, query params); `get_flat_dependant` gone → own tree walk. Implemented `_reject_unknown_query_params` (app-level, after auth); spec rules + 422 on `/saved`, `/feeds`; recorder accepts wrong-method 405s only.
+- The recorder flagged the two new 422s as untested immediately; tests added. 5 curated mutants: 4 killed, 1 survived (dependency-declared parameters untested) → test added, killed. Also extended the recorder unit test (wrong method answering 200 must be reported).
+- Full curated run: 42/43, one STALE: the auth mutant's snippet was the `dependencies=[...]` line I had changed → snippet updated, KILLED again (43/43).
+- `.md` recheck before commit: both entries' statuses, three errors added to both error tables. Committed in one commit (the two steps share files; user prefers small commits from now on).
+- Diagram 8 is now "Routing and authentication" (404/405 before auth, query check after the token check); 18 diagrams validate in Mermaid 10/11.
+- Files modified: `backend/src/swipe_rss/api.py`, `api/openapi.yaml`, `backend/tests/{contract,test_contract}.py`, `backend/scripts/mutants.py`, `backend/tests/README.md`, `docs/architecture.md`, `PROJECT_PLAN.md`, plan files
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -278,6 +299,11 @@
 | Stack after Dockerfile fix | test project + token override | healthy, auth works | `(healthy)`, migrate 0, `/queue` 200 | pass |
 | Redeploy with Dockerfile fix | `git pull && docker compose up -d --build` | healthy, files readable | healthy, `644` in image, `/health` 200, `/queue` 401 | pass |
 | Server deploy (stage 2) | `docker compose up -d` on `phase2` | stack healthy, API over tailnet | as expected after the permission fix; first fetch 20 items, 0 failed | pass |
+| Contract coverage + route equality | `uv run pytest` | all pass, no contract problems | 219 passed, check silent | pass |
+| Contract check sabotage | disable 503 test / add 405 request / partial run | missing / undocumented / silent | as expected, exit 1 / 1 / 0 | pass |
+| Contract curated mutants | `mutants.py contract` | all killed | 3/3 by expected tests | pass |
+| Global rules tests | `uv run pytest` | all pass, contract check silent | 255 passed (contract check first flagged the new 422s, then silent) | pass |
+| Global rules mutants | `mutants.py contract api:` | all killed | 8/9, then 9/9 after adding the dependency-parameter test | pass |
 | Extraction sample, one article per feed | `fetch_html` + trafilatura | most extract | 12 ok, Ars ×9 405 (AWS WAF), mekomit 403 | info |
 
 ## Error Log
@@ -298,12 +324,15 @@
 | 2026-10-04 | Server: parallel build failed at "exporting to image" after Docker cleanup | 1 | Error text not captured; build one service, then `up -d` |
 | 2026-10-04 | Server: `migrate` `PermissionError: 'pyproject.toml'` | 1 | Checkout files `600` (umask 077); chmod by user; Dockerfile `COPY --chmod=a+rX` |
 | 2026-10-04 | Server: DB volume deleted in Docker cleanup | 1 | Lost items only (no swipes yet); refetched. My cleanup list should have warned more explicitly |
+| 2026-10-04 | `ModuleNotFoundError: contract` loading `conftest.py` | 1 | pytest 9 doesn't put `tests/` on `sys.path`; `pythonpath = ["tests"]` |
+| 2026-10-04 | `ImportError: get_flat_dependant` (FastAPI 0.142) | 1 | Internal helper renamed; own walk of the dependency tree with public attributes |
+| 2026-10-04 | Curated mutant "token check removed" went STALE | 1 | Its snippet was the `dependencies=[...]` line I changed; snippet updated, KILLED again |
 
 ## 5-Question Reboot Check
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy done; `phase2` merged into `main`; next: server back to `main` (user), then testing-coverage discussion (Key Question 11) |
+| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy done; `phase2` merged into `main`; contract coverage + spec's global rules (404/405/422) done (branch `stage2-contract-tests`); next: rest of must-fail tests (Key Question 11 i) |
 | Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |

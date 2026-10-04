@@ -29,6 +29,7 @@ dev = [
     "datamodel-code-generator[ruff]>=0.83.0",
     "mutmut>=3.8.0",
     "pytest>=9.1.1",
+    "pyyaml>=6.0.3",
     "ruff>=0.16.10",
 ]
 
@@ -43,6 +44,7 @@ known-third-party = ["alembic"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["tests"]  # test helpers like tests/contract.py are importable
 
 # API (wire) models generated from the OpenAPI contract. Regenerate after editing the spec:
 #   uv run datamodel-codegen

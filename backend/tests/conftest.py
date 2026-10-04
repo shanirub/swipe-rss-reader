@@ -2,13 +2,69 @@ from datetime import datetime
 from email.utils import format_datetime
 from pathlib import Path
 
+import contract
 import pytest
 from alembic import command
 from alembic.config import Config
+from starlette.testclient import TestClient
 
 from swipe_rss.db import make_engine
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
+TESTS_DIR = Path(__file__).resolve().parent
+
+# Contract coverage (see contract.py): every response a test client receives is recorded; after a
+# full, green run the recorded set must equal the responses documented in api/openapi.yaml.
+_recorder = contract.Recorder(contract.load_spec())
+_deselected = 0
+_contract_problems: list[str] = []
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _record_api_responses():
+    original = TestClient.request
+
+    def request(self, method, url, *args, **kwargs):
+        response = original(self, method, url, *args, **kwargs)
+        _recorder.record(method, response.request.url.path, response.status_code)
+        return response
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(TestClient, "request", request)
+        yield
+
+
+def pytest_deselected(items):
+    global _deselected
+    _deselected += len(items)
+
+
+def _is_full_run(session) -> bool:
+    # A partial run (one file, -k, -m, deselected tests, mutmut's subsets) can't judge coverage.
+    option = session.config.option
+    args = {Path(arg.split("::")[0]).resolve() for arg in session.config.args}
+    return (
+        not option.keyword
+        and not option.markexpr
+        and _deselected == 0
+        and all("::" not in arg for arg in session.config.args)
+        and args <= {TESTS_DIR, BACKEND_DIR}
+    )
+
+
+def pytest_sessionfinish(session, exitstatus):
+    if exitstatus != pytest.ExitCode.OK or not _is_full_run(session):
+        return
+    _contract_problems.extend(_recorder.problems())
+    if _contract_problems:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+def pytest_terminal_summary(terminalreporter):
+    if _contract_problems:
+        terminalreporter.section("contract coverage (api/openapi.yaml)", red=True)
+        for problem in _contract_problems:
+            terminalreporter.write_line(problem)
 
 
 def migrate(engine) -> None:

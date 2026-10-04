@@ -1203,6 +1203,7 @@ dev = [
     { name = "datamodel-code-generator", extra = ["ruff"] },
     { name = "mutmut" },
     { name = "pytest" },
+    { name = "pyyaml" },
     { name = "ruff" },
 ]
 
@@ -1223,6 +1224,7 @@ dev = [
     { name = "datamodel-code-generator", extras = ["ruff"], specifier = ">=0.83.0" },
     { name = "mutmut", specifier = ">=3.8.0" },
     { name = "pytest", specifier = ">=9.1.1" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ruff", specifier = ">=0.16.10" },
 ]
 

@@ -11,7 +11,7 @@ Contents:
 3. [Database schema](#3-database-schema-er-diagram): tables and keys
 4. [Database models](#4-database-models-class-diagram) and [API models](#5-api-models-class-diagram)
 5. [Fetch run](#6-fetch-run-sequence) and [one feed entry through ingest](#7-one-feed-entry-through-ingest-flowchart)
-6. [Authentication](#8-authentication-flowchart)
+6. [Routing and authentication](#8-routing-and-authentication-flowchart)
 7. [`GET /queue`](#9-get-queue-sequence), [`POST /swipes`](#10-post-swipes-sequence) and the [read endpoints](#11-get-feeds-get-saved-and-saved-content-sequence)
 8. [Extraction job](#12-extraction-job-sequence) and the [SSRF guard](#13-ssrf-guard-connect-time-check-flowchart)
 9. Lifecycles: [an item](#14-item-lifecycle-state-diagram) and [a saved entry](#15-saved-entry-extraction-state-diagram)
@@ -339,9 +339,9 @@ flowchart TD
     tomb -- no --> insert["insert tombstone and item<br/>item enters the queue"]
 ```
 
-## 8. Authentication (flowchart)
+## 8. Routing and authentication (flowchart)
 
-Secure by default: the token check is an app-level dependency, so it runs before every route, however the route was registered. Only `PUBLIC_PATHS` skip it.
+Secure by default: the token check and the query-parameter check are app-level dependencies, so they run for every route, however the route was registered. Routing happens first: an unknown path or method is answered before any check.
 
 ```mermaid
 flowchart TD
@@ -349,14 +349,19 @@ flowchart TD
     strong -- no --> refuse["RuntimeError: the API refuses to start<br/>(fails closed)"]
     strong -- yes --> ready["app running"]
 
-    req(["incoming request"]) --> public{"path in PUBLIC_PATHS?<br/>(only /health)"}
+    req(["incoming request"]) --> route{"path and method<br/>match a route?"}
+    route -- "unknown path" --> notfound["404"]
+    route -- "known path, wrong method" --> notallowed["405 + Allow header"]
+    route -- yes --> public{"path in PUBLIC_PATHS?<br/>(only /health)"}
     public -- yes --> handler["route handler"]
     public -- no --> header{"Authorization: Bearer ... header?"}
     header -- "no, or another scheme" --> unauth["401 + WWW-Authenticate: Bearer"]
     header -- yes --> compare{"hmac.compare_digest(token, expected)<br/>constant time"}
     compare -- "no match" --> unauth
-    compare -- match --> validate{"query and body valid?"}
-    validate -- no --> invalid["422 (POST /swipes: also logged)"]
+    compare -- match --> unknownq{"query parameter the route<br/>doesn't declare?"}
+    unknownq -- yes --> invalid["422 (POST /swipes: also logged)"]
+    unknownq -- no --> validate{"query and body valid?"}
+    validate -- no --> invalid
     validate -- yes --> handler
 ```
 

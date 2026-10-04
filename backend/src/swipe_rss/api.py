@@ -2,8 +2,9 @@
 
 Secure by default: the token check is an app-level dependency, so every route
 requires the bearer token, however it is registered, except the explicit
-PUBLIC_PATHS allowlist (PROJECT_PLAN.md §3 API conventions). FastAPI's own /docs
-and /openapi.json are off: the hand-written spec is the single source of truth.
+PUBLIC_PATHS allowlist (PROJECT_PLAN.md §3 API conventions). The same way, every
+route rejects query parameters it doesn't declare (422), except /health. FastAPI's
+own /docs and /openapi.json are off: the hand-written spec is the single source of truth.
 
 Routes are registered directly on the app: since FastAPI 0.14x, `include_router`
 no longer lists the included routes in `app.routes`, which tests need to enumerate.
@@ -42,6 +43,7 @@ log = logging.getLogger(__name__)
 
 MIN_TOKEN_LENGTH = 32
 PUBLIC_PATHS = frozenset({"/health"})
+LENIENT_QUERY_PATHS = frozenset({"/health"})  # a liveness probe must not fail over an extra parameter
 
 
 # Path parameters are not covered by the generated models (they describe bodies), so their
@@ -75,6 +77,36 @@ def _require_token(expected: str):
     return check
 
 
+def _declared_query_params(dependant) -> set[str]:
+    # Walks the route's dependency tree with public attributes only (FastAPI's own flattening
+    # helpers are internal and changed names between versions). Query-parameter *models* are not
+    # expanded; the API doesn't use them.
+    names, stack = set(), [dependant]
+    while stack:
+        current = stack.pop()
+        names.update(param.alias for param in current.query_params)
+        stack.extend(current.dependencies)
+    return names
+
+
+def _reject_unknown_query_params(request: Request) -> None:
+    # A typo like ?limt=5 must not be silently ignored (it would return the default). Same 422
+    # format as Pydantic's extra="forbid" on request bodies.
+    route = request.scope.get("route")
+    if route is None or request.url.path in LENIENT_QUERY_PATHS:
+        return
+    declared = _declared_query_params(route.dependant)
+    unknown = [name for name in dict.fromkeys(request.query_params.keys()) if name not in declared]
+    if unknown:
+        raise RequestValidationError(
+            [
+                {"type": "extra_forbidden", "loc": ("query", name), "msg": "Extra inputs are not permitted",
+                 "input": request.query_params[name]}
+                for name in unknown
+            ]
+        )  # fmt: skip
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     if not settings.api_token or len(settings.api_token) < MIN_TOKEN_LENGTH:
@@ -86,7 +118,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url=None,
         docs_url=None,
         redoc_url=None,
-        dependencies=[Depends(_require_token(settings.api_token))],
+        # Order matters: the token check runs first, so an unauthenticated request gets 401, not 422.
+        dependencies=[Depends(_require_token(settings.api_token)), Depends(_reject_unknown_query_params)],
     )
 
     engine = make_engine(settings.db_path)

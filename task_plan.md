@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-User switches the server checkout back to `main` (`git switch main && git pull`; same files, so no rebuild needed). Then: testing-coverage discussion (Key Question 11) → contract + must-fail tests; triage remaining mutmut survivors, on a new branch from `main`.
+Testing-coverage discussion, rest of topic 2: input that never reaches the models (Key Question 11 i), on branch `stage2-contract-tests`. Then Schemathesis (e), CI (g), mutmut survivor triage.
 
 ## Current Phase
 
-Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing, `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy done; next testing-coverage discussion)
+Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing, `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy, merge to `main`, contract coverage, spec's global rules (404/405/422) done; next rest of must-fail tests)
 
 ## Phases
 
@@ -51,7 +51,7 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 - [x] `swipes` / `saved` migration (`0003`), incl. `items.swiped_at` (2026-10-03)
 - [x] FastAPI app skeleton (2026-10-03): `fastapi`/`uvicorn` deps (`trafilatura` deferred to the extraction job); `api.create_app` factory; FastAPI's `/docs`, `/redoc`, `/openapi.json` off; `GET /health`; `.env.example`
 - [x] Bearer token auth (2026-10-03): app-level dependency + `PUBLIC_PATHS` allowlist, constant-time compare, fails closed without a ≥32-char token
-- [x] Mutation checks as a script (2026-10-03): `backend/scripts/mutants.py`, curated mutants (35 by 2026-10-04), all killed; documented in `backend/tests/README.md`
+- [x] Mutation checks as a script (2026-10-03): `backend/scripts/mutants.py`, curated mutants (43 by 2026-10-04), all killed; documented in `backend/tests/README.md`
 - [x] mutmut adopted as an exploration tool (2026-10-03): `backend/scripts/run_mutmut.py`, config in `pyproject.toml`; gaps it found closed with tests (empty query params, golden dedup keys, redirects, User-Agent, missing author, updated-only date, truncation whitespace)
 - [ ] Triage the remaining mutmut survivors before finishing stage 2 (2026-10-04: 147 total, 79% score; `queue`/`swipes`/`api`/`saved`/`feed_health`/`safe_fetch`/`extraction` already triaged as noise/equivalent in findings.md; open: `fetcher` 108, `models` 5, `text` 4, `feeds` 1)
 - [x] `GET /queue` + `POST /swipes` (2026-10-04): `queue.py` (round-robin), `swipes.py` (idempotent batch, item flag, saved on save), per-request transaction; smoke-tested on a copy of the dev DB
@@ -63,7 +63,9 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 - [x] First stage 2 deploy (2026-10-04): server on `phase2`, `.env` by the user; stack healthy, migrations `0001`→`0003` on a fresh DB (old volume lost in a Docker cleanup, no swipes existed), first fetch 29 feeds / 0 failed / 20 items, `/queue` with token over the tailnet OK
 - [x] Dockerfile: `COPY --chmod=a+rX` so the image doesn't inherit the checkout's file modes (deploy broke on files checked out under umask 077); tested with owner-only sources; redeployed 2026-10-04 (`28c1ce8`), files `644` in the image
 - [x] Merge `phase2` into `main` via PR (2026-10-04, merge commit; deployed code = `main`). Open stage 2 items continue on a new branch
-- [ ] Contract + must-fail tests (strategy per Key Question 11); document the strategy in `backend/tests/README.md`
+- [x] Contract coverage (2026-10-04, branch `stage2-contract-tests`): `tests/contract.py` + hooks in `conftest.py` (records every test-client response; after a full green run, recorded set must equal the spec's documented responses), `tests/test_contract.py` (route-set equality, matcher, recorder); 3 curated mutants; all documented responses were already covered
+- [x] Spec's global rules (2026-10-04): 404 unknown path, 405 wrong method, 422 unknown query parameter (not `/health`); `api._reject_unknown_query_params` app-level dependency after auth; spec `info.description` + 422 on `/saved`, `/feeds`; recorder accepts wrong-method 405s; 5 curated mutants (one survived first: dependency-declared parameters were untested → test added)
+- [ ] Must-fail tests for input that never reaches the models (Key Question 11 i): malformed JSON, wrong content type, empty/huge batches
 - **Status:** in_progress
 
 ### Phase 3: Retention (stage 3)
@@ -110,7 +112,7 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 8. ~~mekomit (Cloudflare 403 from server IP)~~ → commented out with TODO, like the7eye.
 9. ~~Deploy step~~ → Claude runs the exact deploy command + read-only checks over Tailscale SSH, only after the user approves each deploy; everything else on the server stays with the user.
 10. ~~OpenAPI spec location~~ → `api/openapi.yaml`, hand-written, contract tests.
-11. **To discuss (before writing contract tests):** test coverage strategy: (a) must-fail tests (404 unknown endpoint, 405 wrong method, 401 token, 422 invalid body/params); (b) unknown fields: request bodies are strict (decided, `additionalProperties: false`); unknown query params still open (FastAPI ignores them by default); (c) route-set equality; (d) coverage meta-check: every documented (path, method, status) exercised at least once; (e) Schemathesis property-based + negative testing in stage 2 (4.29.0 declares Python 3.14; confirm in practice); (f) behavior tests from PROJECT_PLAN; (g) optional GitHub Actions CI running ruff + pytest; (h) Android-side conformance (stage 5); (i) with generated models, only per-response shape validation becomes redundant: must-fail tests still verify wiring (route uses the right model), status codes and error-body format, input outside Pydantic (malformed JSON, wrong content type, empty/oversized batch, huge body), and that the generator translated each constraint correctly; (j) mutation testing: curated `scripts/mutants.py` exists (run it after changing guard tests); mutmut experiment (findings.md) ran the whole backend in ~6 s and found real gaps (blank query params in link normalization, no golden dedup-key test, fetcher redirects/User-Agent/missing author) plus noise. → Decided 2026-10-03: mutmut adopted as an exploration tool (`scripts/run_mutmut.py`, not a gate); gaps it found are fixed; remaining survivors to triage before finishing stage 2.
+11. **Testing-coverage discussion (started 2026-10-04):** (c) + (d) decided and implemented: route-set equality + recording fixture with a full-run check (option "A + B1"; alternatives were explicit `@covers` markers, which can lie, or route equality only). (a)/(b) decided and implemented 2026-10-04: unknown path 404, wrong method 405 (+ `Allow`), unknown query parameter 422 except `/health`, stated as global rules in the spec's `info.description` (OpenAPI can't attach them to operations) and tested; strict query parameters via an app-level dependency (secure by default, like auth; per-route `extra="forbid"` models rejected because new routes would be lenient by default). Next: rest of (i) (malformed JSON, wrong content type, empty/huge batches), then (e) Schemathesis, (g) CI. Original list: (a) must-fail tests (404 unknown endpoint, 405 wrong method, 401 token, 422 invalid body/params); (b) unknown fields: request bodies are strict (decided, `additionalProperties: false`); unknown query params still open (FastAPI ignores them by default); (c) route-set equality; (d) coverage meta-check: every documented (path, method, status) exercised at least once; (e) Schemathesis property-based + negative testing in stage 2 (4.29.0 declares Python 3.14; confirm in practice); (f) behavior tests from PROJECT_PLAN; (g) optional GitHub Actions CI running ruff + pytest; (h) Android-side conformance (stage 5); (i) with generated models, only per-response shape validation becomes redundant: must-fail tests still verify wiring (route uses the right model), status codes and error-body format, input outside Pydantic (malformed JSON, wrong content type, empty/oversized batch, huge body), and that the generator translated each constraint correctly; (j) mutation testing: curated `scripts/mutants.py` exists (run it after changing guard tests); mutmut experiment (findings.md) ran the whole backend in ~6 s and found real gaps (blank query params in link normalization, no golden dedup-key test, fetcher redirects/User-Agent/missing author) plus noise. → Decided 2026-10-03: mutmut adopted as an exploration tool (`scripts/run_mutmut.py`, not a gate); gaps it found are fixed; remaining survivors to triage before finishing stage 2.
 12. ~~Generate Pydantic models?~~ → yes: `datamodel-code-generator`, committed output, freshness test (2026-10-03).
 
 ## Decisions Made
@@ -172,6 +174,11 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | Merge `phase2` before contract tests and survivor triage | Those finish stage 2, they don't gate the merge (no CI); `main` = what's deployed. Merge commit keeps the step-by-step history |
 | Dockerfile `COPY --chmod=a+rX` | Containers run as non-root; the image must not depend on the server checkout's umask |
 | Phase 2 work on branch `phase2` (merged into `main` 2026-10-04) | User request (2026-10-02) |
+| Remaining stage 2 work on branch `stage2-contract-tests` | New branch from `main` after the merge; `phase2` deleted (user OK) |
+| Contract coverage by recording real responses (A + B1), checked only after a full green run | Checks what tests actually got, not what they claim; finds undocumented responses too; partial runs can't judge coverage |
+| Unknown path 404 / wrong method 405 / unknown query parameter 422 (not `/health`), as global rules in the spec | User + Claude (2026-10-04): strict like request bodies, typos visible; OpenAPI has no per-operation place for non-existent operations; done before any client existed |
+| Strict query parameters via app-level dependency, own walk of the dependency tree | Secure by default (new routes strict automatically); FastAPI's flattening helper is internal (`get_flat_dependant` gone in 0.142) |
+| PyYAML as an explicit dev dependency; `pythonpath = ["tests"]` for test helpers | Tests declare what they use (was only transitive via the model generator); `conftest.py` imports `tests/contract.py` |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 
 ## Errors Encountered
@@ -191,6 +198,9 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | Server: parallel image build failed at "exporting to image" after a full Docker cleanup (2026-10-04) | 1 | Actual error not captured; worked around with `docker compose build migrate` then `up -d`; not reproducible on the desktop, warm-cache parallel builds work on the server |
 | Server: `migrate` exit 1, `PermissionError: 'pyproject.toml'` (2026-10-04) | 1 | Checkout files were `600` (umask 077 during `git switch`); `COPY` keeps modes and the app user can't read root-owned `600` files. User chmod-ed the checkout; Dockerfile now `COPY --chmod=a+rX` |
 | Server: DB volume deleted during Docker cleanup (2026-10-04) | 1 | Not recoverable (snapshot was in the same volume); no swipes existed, items refetched. Backups are stage 4 |
+| `ModuleNotFoundError: contract` loading `conftest.py` (2026-10-04) | 1 | pytest 9 doesn't put `tests/` on `sys.path`; `pythonpath = ["tests"]` |
+| `ImportError: get_flat_dependant` (FastAPI 0.142, 2026-10-04) | 1 | Internal helper renamed; own walk of the dependency tree with public attributes |
+| Curated mutant "token check removed" STALE after changing `dependencies=[...]` (2026-10-04) | 1 | Snippet updated; the STALE verdict did its job (a stale mutant checks nothing) |
 | Route-auth test passed with an unprotected endpoint (2026-10-03) | 1 | FastAPI 0.142 `include_router` hides routes from `app.routes`, so the test enumerated nothing; redesigned (app-level auth, routes on the app, test asserts it sees `/health`) |
 
 ## Notes

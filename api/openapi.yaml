@@ -14,6 +14,12 @@ info:
     - Evolution: new request fields must be optional; existing request rules are never tightened
       (swipes queued on the phone must stay valid).
     - Only `/health` is unauthenticated.
+    - Unknown query parameters are rejected with 422 (same format as other validation errors), except
+      on `/health`. Introduced 2026-10-04, before any client existed: a one-time exception to the
+      "never tighten" rule above (swipe bodies were not affected).
+    - A path not listed here returns 404 (`Error` body), also without a token. A method not listed for
+      a path returns 405 (`Error` body) with an `Allow` header naming the valid methods. These can't be
+      attached to individual operations, so they are stated here and tested.
 servers:
   - url: https://my-first-server.porcupine-celsius.ts.net:8443
     description: Tailscale Serve (tailnet only)
@@ -108,6 +114,8 @@ paths:
                 $ref: "#/components/schemas/SavedListResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
 
   /saved/{feed_id}/{item_key}/content:
     get:
@@ -150,6 +158,8 @@ paths:
                 $ref: "#/components/schemas/FeedListResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
         "503":
           description: feeds.toml is invalid (the fetcher is not running either); `detail` says why
           content:
