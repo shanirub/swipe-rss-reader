@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-First stage 2 deploy (`api` service added and tested locally): user switches the server checkout to `phase2` and creates `.env` with `SWIPE_RSS_API_TOKEN`; deploy after user approval, `curl` over the tailnet. Then: testing-coverage discussion (Key Question 11) → contract + must-fail tests; triage remaining mutmut survivors. Branch `phase2`.
+Redeploy the Dockerfile permission fix (`git pull && docker compose up -d --build`, after user approval). Then: testing-coverage discussion (Key Question 11) → contract + must-fail tests; triage remaining mutmut survivors. Branch `phase2`.
 
 ## Current Phase
 
-Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing, `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service done; next first stage 2 deploy)
+Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing, `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy done; next testing-coverage discussion)
 
 ## Phases
 
@@ -60,7 +60,8 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 - [x] Read endpoints (2026-10-04): `GET /feeds` (`feed_health.py`, 503 on invalid `feeds.toml`), `GET /saved` + `GET /saved/{feed_id}/{item_key}/content` (`saved.py`); path params validated with patterns from the generated `Card`; smoke-tested
 - [x] Extraction job + SSRF guard (2026-10-04): `safe_fetch.py` (connect-time IP check, pinned connection, manual redirects, limits), `extraction.py` (claim + lease, backoff 5/30 min, permanent vs temporary), `swipe-rss extract` every minute; `trafilatura` added; tested on real articles (Ars Technica: AWS WAF captcha → always `failed`, see findings)
 - [x] `api` Compose service (2026-10-04): uvicorn on `127.0.0.1:8001`, health check, only `api` gets `.env` (optional for Compose); tested locally: no token → only `api` fails; with token → healthy, 401/200, loopback-only bind, scheduler can't see the token
-- [ ] First stage 2 deploy: server `.env` (user), server checkout switched to `phase2` (user), deploy after approval, `curl` over the tailnet
+- [x] First stage 2 deploy (2026-10-04): server on `phase2`, `.env` by the user; stack healthy, migrations `0001`→`0003` on a fresh DB (old volume lost in a Docker cleanup, no swipes existed), first fetch 29 feeds / 0 failed / 20 items, `/queue` with token over the tailnet OK
+- [x] Dockerfile: `COPY --chmod=a+rX` so the image doesn't inherit the checkout's file modes (deploy broke on files checked out under umask 077); tested with owner-only sources
 - [ ] Contract + must-fail tests (strategy per Key Question 11); document the strategy in `backend/tests/README.md`
 - **Status:** in_progress
 
@@ -167,6 +168,7 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | Extraction: attempt counted at claim time + 10-min lease; permanent errors fail at once | Crash-loops use up attempts; overlapping cron runs can't double-process; no hammering of 4xx sites |
 | `.env` optional for Compose, given to `api` only | A missing token stops only the API (fails closed), not fetching; least privilege for the secret |
 | First stage 2 deploy: server checkout switched to `phase2` (not merged to `main` yet) | User choice (2026-10-04); merge to `main` and switch back later |
+| Dockerfile `COPY --chmod=a+rX` | Containers run as non-root; the image must not depend on the server checkout's umask |
 | Phase 2 work on branch `phase2` | User request (2026-10-02) |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 
@@ -184,6 +186,9 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | Test URL assumed invalid caused a real DNS lookup (2026-10-04) | 1 | Replaced with URLs that fail while parsing |
 | My `pkill -f` cleanup matched its own shell and killed it (2026-10-04) | 1 | Harmless (background loop stopped anyway); don't `pkill -f` patterns contained in the same command |
 | `invalid project name " swipe-rss-apitest"` (2026-10-04) | 1 | zsh doesn't word-split `$P="-p name"`; used `COMPOSE_PROJECT_NAME` |
+| Server: parallel image build failed at "exporting to image" after a full Docker cleanup (2026-10-04) | 1 | Actual error not captured; worked around with `docker compose build migrate` then `up -d`; not reproducible on the desktop, warm-cache parallel builds work on the server |
+| Server: `migrate` exit 1, `PermissionError: 'pyproject.toml'` (2026-10-04) | 1 | Checkout files were `600` (umask 077 during `git switch`); `COPY` keeps modes and the app user can't read root-owned `600` files. User chmod-ed the checkout; Dockerfile now `COPY --chmod=a+rX` |
+| Server: DB volume deleted during Docker cleanup (2026-10-04) | 1 | Not recoverable (snapshot was in the same volume); no swipes existed, items refetched. Backups are stage 4 |
 | Route-auth test passed with an unprotected endpoint (2026-10-03) | 1 | FastAPI 0.142 `include_router` hides routes from `app.routes`, so the test enumerated nothing; redesigned (app-level auth, routes on the app, test asserts it sees `/health`) |
 
 ## Notes
@@ -193,4 +198,4 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 - Dev loop: edit on desktop → `cd backend && uv run ruff check . && uv run ruff format --check . && uv run pytest` → when guard tests or the code they protect changed: `uv run python scripts/mutants.py` → optional local `docker compose up --build` → **recheck all `.md` files** → commit + push → server `cd ~/swipe-rss-reader && git pull && docker compose up -d --build`.
 - **Mandatory before every commit (user rule, 2026-10-03): recheck all maintained `.md` files for stale or missing data**: `PROJECT_PLAN.md`, `task_plan.md`, `progress.md`, `findings.md`, `README.md`, `backend/tests/README.md`, `docs/architecture.md` (diagrams must match the code flow). Read them in full, compare with what changed, fix, then commit. It catches something nearly every time.
 - Deploy: Claude runs `cd ~/swipe-rss-reader && git pull && docker compose up -d --build` over Tailscale SSH **only after the user approves that deploy**, then read-only checks (`docker compose ps`, logs, read-only DB queries). Never edit files in the server checkout. Root, Tailscale and system changes go to the user. Note: `srub` is in group `docker` (root-equivalent).
-- Server facts: RSS API URL `https://my-first-server.porcupine-celsius.ts.net:8443` → `127.0.0.1:8001` (nothing listening until stage 2). DB in named volume `swipe-rss-reader_data` at `/data/swipe_rss.db`.
+- Server facts: RSS API URL `https://my-first-server.porcupine-celsius.ts.net:8443` → `127.0.0.1:8001` (`api` container, live since 2026-10-04). DB in named volume `swipe-rss-reader_data` at `/data/swipe_rss.db`.

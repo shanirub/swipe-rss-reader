@@ -73,7 +73,7 @@ All networking happens over **Tailscale** (WireGuard-based private mesh VPN). No
 
 - Hosted on **GitHub**. Development (backend and Android) happens on the desktop; the server only runs committed code.
 - The repo is **public**, so the server clones and pulls **anonymously over HTTPS** (no deploy key, no credentials on the server). If the repo ever goes private, switch to a read-only deploy key.
-- Deploy: `git pull && docker compose up -d --build`. Claude may run exactly this plus read-only checks over Tailscale SSH, after the owner approves each deploy; all other server changes are done by the owner. Dependencies are installed inside the image build, pinned by `uv.lock`. Later option: build images in CI, push to GHCR, and have the server pull images only.
+- Deploy: `git pull && docker compose up -d --build`. Claude may run exactly this plus read-only checks over Tailscale SSH, after the owner approves each deploy; all other server changes are done by the owner. Dependencies are installed inside the image build, pinned by `uv.lock`. The image does not inherit the checkout's file modes (`COPY --chmod=a+rX`), since containers run as a non-root user and a checkout under a strict umask would otherwise break them. Later option: build images in CI, push to GHCR, and have the server pull images only.
 - **Secrets never in git:** `.env` (commit `.env.example`), rclone/restic config and passphrase, Android signing keystore, `local.properties` (holds the API token).
 - The Android app is built on the desktop; the server ignores `android/`.
 

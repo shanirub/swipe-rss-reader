@@ -13,12 +13,14 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_DOWNLOADS=never
 WORKDIR /app
 
+# --chmod=a+rX: the image must not inherit the checkout's file modes. The app runs as a
+# non-root user, and a checkout made under umask 077 would leave these files owner-only.
 # Dependencies first (pinned by uv.lock) so code changes don't reinstall them.
-COPY pyproject.toml uv.lock .python-version ./
+COPY --chmod=a+rX pyproject.toml uv.lock .python-version ./
 RUN uv sync --frozen --no-dev --no-install-project
-COPY src ./src
-COPY alembic ./alembic
-COPY alembic.ini crontab ./
+COPY --chmod=a+rX src ./src
+COPY --chmod=a+rX alembic ./alembic
+COPY --chmod=a+rX alembic.ini crontab ./
 RUN uv sync --frozen --no-dev --no-editable
 
 ENV PATH=/app/.venv/bin:$PATH

@@ -214,6 +214,18 @@
 - Files modified: `compose.yaml`, `PROJECT_PLAN.md`, `README.md`, `docs/architecture.md`, plan files
 - `.md` recheck before commit: `findings.md` (current state, `compose.yaml` resource), `task_plan.md` (server switches to `phase2`: user choice; zsh error row), `docs/architecture.md` (api reads `feeds.toml`; cli has `extract`), `README.md` (cli line). Diagrams revalidated. Committed and pushed.
 
+### Phase 2: first stage 2 deploy
+
+- **Status:** complete
+- User cleaned up Docker on the server before deploying; this also deleted the `swipe-rss-reader_data` volume (my cleanup list warned only in general terms). Lost: items/tombstones/feed state since 2026-10-02; no swipes or saves existed (API never deployed).
+- Build after the cleanup failed at "exporting to image" for the three services building the same tag in parallel (error text not captured); `docker compose build migrate` + `up -d` worked. Not reproducible on the desktop.
+- `migrate` then failed: `PermissionError: 'pyproject.toml'`. Cause: checkout files `600` after `git switch` under umask 077; `COPY` keeps file modes; the container user can't read them. Reproduced on the desktop. User chmod-ed the checkout; permanent fix `COPY --chmod=a+rX` in the Dockerfile (tested with owner-only sources).
+- Read-only checks (desktop + server): stack healthy, `0001`→`0003`, `/health` 200, `/queue` 401 without token, `/docs` 404, port bound to `127.0.0.1` only, first fetch 29 feeds / 0 failed / 20 items, extract job succeeds every minute. User verified `/queue` with the token over the tailnet.
+- Noted for the user: `.env` on the server is `644` → `chmod 600`.
+- Explained why the token isn't regenerated per container start (the phone holds the same shared secret; short-lived tokens need a refresh flow).
+- Files modified: `backend/Dockerfile`, `PROJECT_PLAN.md`, plan files
+- `.md` recheck before commit: file list in this entry, one unclear line in `findings.md`; READMEs and diagrams unaffected. Committed and pushed.
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -260,6 +272,9 @@
 | Real extraction | `swipe-rss extract` on dev-DB copy | saved articles extracted | 2/2 done (Wired, HTTPS) | pass |
 | `api` service without token | `docker compose up` (test project) | only `api` fails, others run | `api` restarting with "must be set to at least 32 characters"; migrate exited 0; scheduler up | pass |
 | `api` service with token | test project + override | healthy, auth works, loopback only | `(healthy)`; `/health` 200; `/queue` 401 / 200; `/feeds` lists feeds; listen `127.0.0.1:8001` only; scheduler has no token | pass |
+| Image from owner-only sources | `chmod -R go-rwx` copy, build, run as app user | migrate, crontab, extract work | `0003`, crontab valid, extract ok | pass |
+| Stack after Dockerfile fix | test project + token override | healthy, auth works | `(healthy)`, migrate 0, `/queue` 200 | pass |
+| Server deploy (stage 2) | `docker compose up -d` on `phase2` | stack healthy, API over tailnet | as expected after the permission fix; first fetch 20 items, 0 failed | pass |
 | Extraction sample, one article per feed | `fetch_html` + trafilatura | most extract | 12 ok, Ars ×9 405 (AWS WAF), mekomit 403 | info |
 
 ## Error Log
@@ -277,13 +292,16 @@
 | 2026-10-04 | Invalid-URL test made a real DNS lookup (`http://[not-an-ip/` is accepted by httpx) | 1 | URLs that fail at parse time instead |
 | 2026-10-04 | `pkill -f` cleanup killed its own shell (exit 144) | 1 | Pattern was part of the same command line; avoid that |
 | 2026-10-04 | `invalid project name " swipe-rss-apitest"` | 1 | zsh doesn't word-split `$P="-p name"`; used `COMPOSE_PROJECT_NAME` instead |
+| 2026-10-04 | Server: parallel build failed at "exporting to image" after Docker cleanup | 1 | Error text not captured; build one service, then `up -d` |
+| 2026-10-04 | Server: `migrate` `PermissionError: 'pyproject.toml'` | 1 | Checkout files `600` (umask 077); chmod by user; Dockerfile `COPY --chmod=a+rX` |
+| 2026-10-04 | Server: DB volume deleted in Docker cleanup | 1 | Lost items only (no swipes yet); refetched. My cleanup list should have warned more explicitly |
 
 ## 5-Question Reboot Check
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service done; next: first stage 2 deploy |
+| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy done; next: redeploy Dockerfile fix, then testing-coverage discussion |
 | Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |
-| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard; `api` Compose service |
+| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard; `api` Compose service; first stage 2 deploy (API live over the tailnet) |
