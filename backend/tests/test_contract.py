@@ -96,11 +96,18 @@ def concrete(template: str) -> str:
     return template.replace("{feed_id}", "a").replace("{item_key}", "guid:" + "0" * 64)
 
 
-@pytest.mark.parametrize("headers", [AUTH, {}])
-def test_unknown_path_is_404(engine, db_path, headers):
-    client = TestClient(create_app(Settings(db_path=db_path, feeds_path=db_path, api_token=TOKEN)), headers=headers)
+def test_unknown_path_is_404(client):
     response = client.get("/no-such-path")
-    assert response.status_code == 404  # also without a token: routing happens before auth
+    assert response.status_code == 404
+    Error.model_validate(response.json())
+
+
+@pytest.mark.parametrize("path", ["/no-such-path", "/queue"])
+def test_without_token_every_path_except_health_is_401(engine, db_path, path):
+    # The token is checked before routing: without it, nothing reveals which paths exist.
+    client = TestClient(create_app(Settings(db_path=db_path, feeds_path=db_path, api_token=TOKEN)))
+    response = client.delete(path)  # wrong method too: still 401, not 405
+    assert response.status_code == 401
     Error.model_validate(response.json())
 
 

@@ -6,11 +6,19 @@ x-backend: &backend
   environment:
     SWIPE_RSS_DB: /data/swipe_rss.db
     SWIPE_RSS_FEEDS: /config/feeds.toml
+    # Optional in .env (Compose substitutes it for every service; the token stays api-only).
+    SWIPE_RSS_LOG_LEVEL: ${SWIPE_RSS_LOG_LEVEL:-INFO}
   volumes:
     - data:/data
     # Directory, not file: git pull replaces feeds.toml with a new inode, which a
     # single-file bind mount would not see until the container restarts.
     - ./config:/config:ro
+  # Docker's default json-file driver never deletes logs; keep at most 3 × 10 MB per container.
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
 
 services:
   # One-shot: applies migrations before anything else touches the database.

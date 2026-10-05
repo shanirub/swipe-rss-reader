@@ -2,6 +2,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 import httpx
+import pytest
 from annotated_types import MaxLen
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -244,3 +245,15 @@ def test_updated_date_is_used_when_there_is_no_published_date():
     )
     [item] = fetcher.parse_entries(Feed(id="a", url="https://a.example/feed"), atom, {})
     assert item.published_at == datetime(2026, 10, 3, 6, 0, tzinfo=UTC)
+
+
+@pytest.mark.parametrize("date", ["3000-01-01T00:00:00Z", "1969-12-31T23:59:59Z"])
+def test_date_outside_the_api_range_becomes_null(date):
+    # Otherwise the card couldn't be swiped: the API rejects such timestamps (422).
+    atom = (
+        b'<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>t</title><id>f</id>'
+        b'<entry><title>Odd date</title><id>d1</id><link href="https://a.example/d"/>'
+        b"<published>" + date.encode() + b"</published></entry></feed>"
+    )
+    [item] = fetcher.parse_entries(Feed(id="a", url="https://a.example/feed"), atom, {})
+    assert item.published_at is None

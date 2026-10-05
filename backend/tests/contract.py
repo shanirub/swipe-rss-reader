@@ -5,9 +5,9 @@ conftest.py wraps the test client, so every response a test receives is recorded
 - every documented response must have been produced by at least one test (nothing untested);
 - a response on a documented path that the spec doesn't document fails the run too (the API
   must not answer in ways the contract doesn't describe).
-Requests to paths that aren't in the spec (e.g. test-only routes) are not recorded. A 405 for a
-method the spec doesn't list on a documented path is accepted: the spec states that rule globally
-(info.description), because OpenAPI can't attach responses to operations that don't exist.
+Requests to paths that aren't in the spec (e.g. test-only routes) are not recorded. For a method the
+spec doesn't list on a documented path, the spec's global rules apply (info.description; OpenAPI
+can't attach responses to operations that don't exist): 405, or 401 when the token is missing.
 """
 
 import re
@@ -16,6 +16,7 @@ from pathlib import Path
 import yaml
 
 HTTP_METHODS = {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
+GLOBAL_RULE_STATUSES = {401, 405}  # answers to a method the spec doesn't list (see module docstring)
 
 
 def find_spec() -> Path:
@@ -77,8 +78,8 @@ class Recorder:
         template = self.template_for(url_path)
         if template is None:
             return
-        if (method.upper(), template) not in self._operations and status == 405:
-            return  # wrong method → 405: the spec's global rule, not an undocumented response
+        if (method.upper(), template) not in self._operations and status in GLOBAL_RULE_STATUSES:
+            return  # wrong method → 405 (401 without token): the spec's global rules
         self.seen.add((method.upper(), template, status))
 
     def problems(self) -> list[str]:

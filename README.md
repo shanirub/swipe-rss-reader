@@ -22,8 +22,9 @@ The three tracking files (`task_plan.md`, `progress.md`, `findings.md`) and the 
 ├── task_plan.md             execution tracking (phases, next step, decisions)    ┐ planning-with-files
 ├── progress.md              session log, test results, errors                   │ (Claude Code skill)
 ├── findings.md              research notes, server inventory                    ┘
-├── compose.yaml             Docker Compose: migrate, scheduler, api (127.0.0.1:8001)
-├── .env.example             template for .env (API token); .env itself is never committed
+├── .github/workflows/ci.yml  CI on every push: lint, tests, mutation checks, Docker build
+├── compose.yaml             Docker Compose: migrate, scheduler, api (127.0.0.1:8001), log rotation
+├── .env.example             template for .env (API token, optional log level); .env itself is never committed
 ├── docs/
 │   ├── architecture.md      diagrams: system, modules, schema, flows, lifecycles
 │   └── logo.png             project logo (used in this README)
@@ -46,6 +47,8 @@ The three tracking files (`task_plan.md`, `progress.md`, `findings.md`) and the 
     │   ├── safe_fetch.py    SSRF guard: fetches untrusted URLs only from public addresses
     │   ├── cli.py           `swipe-rss` command: `fetch`, `extract`
     │   ├── config.py        settings from environment variables
+    │   ├── logs.py          logging setup: SWIPE_RSS_LOG_LEVEL, no health checks in the access log
+    │   ├── timestamps.py    the API's timestamp range (1970 ≤ t < 3000), shared by API and fetcher
     │   ├── db.py            SQLite engine: WAL, busy_timeout, BEGIN IMMEDIATE
     │   ├── models.py        database tables (SQLAlchemy, STRICT)
     │   ├── api_models.py    API models, GENERATED from api/openapi.yaml (do not edit)

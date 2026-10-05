@@ -1,0 +1,45 @@
+# CI: runs on every push and pull request (decided 2026-10-05). Free for public repositories
+# on GitHub-hosted runners. Nothing here touches the internet beyond installing dependencies:
+# the tests use local servers and fakes only (backend/tests/README.md).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:  # a newer push to the same branch cancels the older run
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Install (Python version from backend/.python-version, dependencies from uv.lock)
+        run: uv sync --frozen
+      - name: Lint
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: Tests (incl. contract coverage and Schemathesis)
+        run: uv run pytest
+      - name: Curated mutation checks
+        run: uv run python scripts/mutants.py
+      - name: mutmut (exploration report, not a gate)
+        continue-on-error: true
+        run: uv run python scripts/run_mutmut.py
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the backend image
+        run: docker build -t swipe-rss-backend:ci backend
+      - name: The image starts and imports the app
+        run: docker run --rm swipe-rss-backend:ci python -c "import swipe_rss.api, swipe_rss.extraction"

@@ -9,6 +9,7 @@ from swipe_rss.db import make_engine
 from swipe_rss.extraction import run_extraction
 from swipe_rss.feeds import FeedsFileError, load_feeds
 from swipe_rss.fetcher import run_fetch
+from swipe_rss.logs import configure_logging
 
 log = logging.getLogger("swipe_rss")
 
@@ -20,9 +21,8 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("extract", help="extract the text of due saved articles")
     args = parser.parse_args(argv)
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    logging.getLogger("httpx").setLevel(logging.WARNING)
     settings = get_settings()
+    configure_logging(settings.log_level)  # SWIPE_RSS_LOG_LEVEL; third-party loggers stay at WARNING
 
     if args.command == "fetch":
         try:

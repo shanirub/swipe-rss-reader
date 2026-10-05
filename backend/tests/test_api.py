@@ -1,11 +1,11 @@
 from pathlib import Path
 
 import pytest
-from fastapi import APIRouter, Depends, FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
-from swipe_rss.api import MIN_TOKEN_LENGTH, PUBLIC_PATHS, _require_token, create_app
+from swipe_rss.api import MIN_TOKEN_LENGTH, PUBLIC_PATHS, BearerTokenMiddleware, create_app
 from swipe_rss.api_models import Error, Health
 from swipe_rss.config import Settings
 
@@ -30,7 +30,8 @@ def test_health_is_public(client):
 @pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
 def test_fastapi_generated_docs_are_off(client, path):
     # The hand-written api/openapi.yaml is the only spec; FastAPI must not serve a second one.
-    assert client.get(path).status_code == 404
+    # With the token: without it, every path answers 401 before routing.
+    assert client.get(path, headers={"Authorization": f"Bearer {TOKEN}"}).status_code == 404
 
 
 @pytest.mark.parametrize("token", [None, "", "short"])
@@ -57,7 +58,7 @@ def test_every_route_except_the_public_ones_requires_the_token():
 
 
 def test_routes_added_later_are_protected_too():
-    # The app-level dependency must also cover routers included after create_app.
+    # The middleware must also cover routers included after create_app.
     app = create_app(settings())
     router = APIRouter()
 
@@ -73,14 +74,20 @@ def test_routes_added_later_are_protected_too():
 
 @pytest.fixture
 def guarded():
-    # A minimal app using the same dependency, to exercise the token check itself.
+    # A minimal app behind the same middleware, to exercise the token check itself.
     app = FastAPI()
 
-    @app.get("/guarded", dependencies=[Depends(_require_token(TOKEN))])
+    @app.get("/guarded")
     def guarded_route() -> dict:
         return {"ok": True}
 
+    app.add_middleware(BearerTokenMiddleware, token=TOKEN)
     return TestClient(app)
+
+
+def test_right_token_passes(guarded):
+    for scheme in ("Bearer", "bearer"):  # the scheme is case-insensitive (RFC 7235)
+        assert guarded.get("/guarded", headers={"Authorization": f"{scheme} {TOKEN}"}).json() == {"ok": True}
 
 
 @pytest.mark.parametrize(

@@ -51,5 +51,6 @@ def load_feeds(path: Path) -> FeedsFile:
         with path.open("rb") as f:
             data = tomllib.load(f)
         return FeedsFile.model_validate(data)
-    except (OSError, tomllib.TOMLDecodeError, ValidationError) as e:
+    # UnicodeDecodeError: a file saved in another encoding (found by Schemathesis via GET /feeds).
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError, ValidationError) as e:
         raise FeedsFileError(f"{path}: {e}") from e

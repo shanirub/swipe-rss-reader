@@ -21,6 +21,7 @@ from swipe_rss.dedup import dedup_key, normalize_link
 from swipe_rss.feeds import Feed, FeedsFile
 from swipe_rss.models import FeedStatus, Item, Tombstone
 from swipe_rss.text import html_to_text, truncate
+from swipe_rss.timestamps import in_range
 
 log = logging.getLogger(__name__)
 
@@ -76,7 +77,15 @@ class RunSummary:
 def _entry_time(entry) -> datetime | None:
     # feedparser normalizes *_parsed to UTC struct_time.
     st = entry.get("published_parsed") or entry.get("updated_parsed")
-    return datetime.fromtimestamp(calendar.timegm(st), UTC) if st else None
+    if not st:
+        return None
+    try:
+        value = datetime.fromtimestamp(calendar.timegm(st), UTC)
+    except OverflowError, OSError, ValueError:
+        return None
+    # A date outside the API's timestamp range would make the card unswipeable: like an
+    # oversized link, it becomes null (the queue and the age filter then use fetched_at).
+    return value if in_range(value) else None
 
 
 def parse_entries(feed: Feed, body: bytes, response_headers: dict[str, str]) -> list[ParsedItem]:

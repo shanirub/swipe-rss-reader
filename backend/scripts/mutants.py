@@ -22,7 +22,7 @@ HOW TO USE
 
     Run it after changing a guard test or the code a mutant targets, and before relying
     on a guard test you have never seen fail. About 1.5 s per mutant (each run compiles
-    from a fresh bytecode cache, see SAFETY); about a minute for all of them.
+    from a fresh bytecode cache, see SAFETY); about five minutes for all of them.
 
     Adding a mutant: append a Mutant(...) to MUTANTS with the file, the exact original
     snippet, its broken replacement, the test file to run and the name of the test that
@@ -202,8 +202,8 @@ MUTANTS = [
     Mutant(
         name="api auth: app-level token check removed",
         file="src/swipe_rss/api.py",
-        original="dependencies=[Depends(_require_token(settings.api_token)), Depends(_reject_unknown_query_params)],",
-        mutated="dependencies=[Depends(_reject_unknown_query_params)],",
+        original="    app.add_middleware(BearerTokenMiddleware, token=settings.api_token)\n",
+        mutated="",
         tests="tests/test_api.py",
         killed_by="test_routes_added_later_are_protected_too",
         why="every route except PUBLIC_PATHS needs the token",
@@ -220,8 +220,8 @@ MUTANTS = [
     Mutant(
         name="api auth: token value not compared",
         file="src/swipe_rss/api.py",
-        original="if credentials is None or not hmac.compare_digest(credentials.credentials.encode(), expected_bytes):",
-        mutated="if credentials is None:",
+        original='return scheme.lower() == "bearer" and hmac.compare_digest(credentials.encode(), self._expected)',
+        mutated='return scheme.lower() == "bearer"',
         tests="tests/test_api.py",
         killed_by="test_bad_credentials_get_401",
         why="a wrong token gets 401",
@@ -450,7 +450,7 @@ MUTANTS = [
     Mutant(
         name="contract: any response to a wrong method accepted",
         file="tests/contract.py",
-        original="not in self._operations and status == 405:",
+        original="not in self._operations and status in GLOBAL_RULE_STATUSES:",
         mutated="not in self._operations:",
         tests="tests/test_contract.py",
         killed_by="test_recorder_reports_missing_and_undocumented_responses",
@@ -460,20 +460,136 @@ MUTANTS = [
     Mutant(
         name="api: unknown query parameters ignored",
         file="src/swipe_rss/api.py",
-        original="dependencies=[Depends(_require_token(settings.api_token)), Depends(_reject_unknown_query_params)],",
-        mutated="dependencies=[Depends(_require_token(settings.api_token))],",
+        original="dependencies=[Depends(_reject_unknown_query_params)],",
+        mutated="dependencies=[],",
         tests="tests/test_contract.py",
         killed_by="test_unknown_query_parameter_is_422",
         why="a typo like ?limt=5 must be a 422, not silently the default",
     ),
+    # --- API: token before body, size limit, logging ---
     Mutant(
-        name="api: query check before the token check",
+        name="api: size limit before the token check",
         file="src/swipe_rss/api.py",
-        original="dependencies=[Depends(_require_token(settings.api_token)), Depends(_reject_unknown_query_params)],",
-        mutated="dependencies=[Depends(_reject_unknown_query_params), Depends(_require_token(settings.api_token))],",
-        tests="tests/test_contract.py",
-        killed_by="test_token_is_checked_before_query_parameters",
-        why="unauthenticated requests get 401 whatever else is wrong",
+        original=(
+            "    app.add_middleware(BodySizeLimitMiddleware, limit=MAX_BODY_BYTES)\n"
+            "    app.add_middleware(BearerTokenMiddleware, token=settings.api_token)\n"
+        ),
+        mutated=(
+            "    app.add_middleware(BearerTokenMiddleware, token=settings.api_token)\n"
+            "    app.add_middleware(BodySizeLimitMiddleware, limit=MAX_BODY_BYTES)\n"
+        ),
+        tests="tests/test_api_input.py",
+        killed_by="test_without_token_the_body_is_not_read",
+        why="without the token, not a single body byte is read",
+    ),
+    Mutant(
+        name="api: bearer scheme case-sensitive",
+        file="src/swipe_rss/api.py",
+        original='return scheme.lower() == "bearer" and',
+        mutated='return scheme == "Bearer" and',
+        tests="tests/test_api.py",
+        killed_by="test_right_token_passes",
+        why="the auth scheme is case-insensitive (RFC 7235)",
+    ),
+    Mutant(
+        name="api: body limit only checks Content-Length",
+        file="src/swipe_rss/api.py",
+        original="            if size > self.limit:",
+        mutated="            if False:",
+        tests="tests/test_api_input.py",
+        killed_by="test_chunked_body_over_the_limit_is_413",
+        why="chunked bodies have no Content-Length; the limit must hold while streaming",
+    ),
+    Mutant(
+        name="api: body limit off by one",
+        file="src/swipe_rss/api.py",
+        original="int(declared) > self.limit",
+        mutated="int(declared) >= self.limit",
+        tests="tests/test_api_input.py",
+        killed_by="test_body_of_exactly_the_limit_passes_the_size_check",
+        why="a body of exactly the limit is allowed",
+    ),
+    Mutant(
+        name="api: logged body of a rejected batch not capped",
+        file="src/swipe_rss/api.py",
+        original="            if len(body_text) > LOG_BODY_MAX_CHARS:",
+        mutated="            if False:",
+        tests="tests/test_api_input.py",
+        killed_by="test_logged_body_of_a_rejected_batch_is_capped",
+        why="one request must not be able to write megabytes into the log",
+    ),
+    Mutant(
+        name="api: logged errors repeat the input",
+        file="src/swipe_rss/api.py",
+        original='errors = [{key: e[key] for key in ("type", "loc", "msg") if key in e} for e in exc.errors()]',
+        mutated="errors = exc.errors()",
+        tests="tests/test_api_input.py",
+        killed_by="test_logged_body_of_a_rejected_batch_is_capped",
+        why="Pydantic repeats the input in every error, which would multiply the log line",
+    ),
+    # --- strict JSON types (findings of Schemathesis) ---
+    Mutant(
+        name="api: swipe body validated in lax mode",
+        file="src/swipe_rss/api.py",
+        original="SwipeBatch.model_validate_json(source, strict=True)",
+        mutated="SwipeBatch.model_validate_json(source)",
+        tests="tests/test_api_input.py",
+        killed_by="test_values_of_the_wrong_json_type_are_422",
+        why='0 is not a timestamp and "180" is not an integer in the spec\'s JSON types',
+    ),
+    Mutant(
+        name="api: integral floats not normalized",
+        file="src/swipe_rss/api.py",
+        original="parsed = json.loads(body, parse_float=_integral_float_as_int)",
+        mutated="parsed = json.loads(body)",
+        tests="tests/test_api_input.py",
+        killed_by="test_integral_floats_count_as_integers",
+        why="JSON Schema counts 180.0 as an integer",
+    ),
+    Mutant(
+        name="api: validation error input left as bytes",
+        file="src/swipe_rss/api.py",
+        original='"input": _text(error["input"])',
+        mutated='"input": error["input"]',
+        tests="tests/test_api_input.py",
+        killed_by="test_invalid_utf8_body_is_422_not_500",
+        why="the error response must not crash on input that isn't UTF-8",
+    ),
+    Mutant(
+        name="api: timestamp range not checked",
+        file="src/swipe_rss/api.py",
+        original="    if errors := _timestamp_range_errors(batch):",
+        mutated="    if errors := []:",
+        tests="tests/test_api_input.py",
+        killed_by="test_timestamps_outside_the_range_are_422_not_500",
+        why="a timestamp that leaves datetime's range in UTC crashed the insert (500)",
+    ),
+    Mutant(
+        name="fetcher: feed date outside the API range kept",
+        file="src/swipe_rss/fetcher.py",
+        original="    return value if in_range(value) else None",
+        mutated="    return value",
+        tests="tests/test_fetcher.py",
+        killed_by="test_date_outside_the_api_range_becomes_null",
+        why="a stored date outside the range would make the card unswipeable",
+    ),
+    Mutant(
+        name="feeds: file in another encoding crashes",
+        file="src/swipe_rss/feeds.py",
+        original="except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError, ValidationError) as e:",
+        mutated="except (OSError, tomllib.TOMLDecodeError, ValidationError) as e:",
+        tests="tests/test_feeds.py",
+        killed_by="test_file_that_is_not_utf8_is_invalid",
+        why="a wrongly encoded feeds.toml is invalid (503 / fetch aborted), not a crash",
+    ),
+    Mutant(
+        name="logs: health checks kept in the access log",
+        file="src/swipe_rss/logs.py",
+        original='return not (len(args) >= 3 and str(args[2]).split("?")[0] == "/health")',
+        mutated="return True",
+        tests="tests/test_logs.py",
+        killed_by="test_health_checks_are_dropped_from_the_access_log",
+        why="health checks were 99.8% of the API's log",
     ),
     Mutant(
         name="api: /health strict about query parameters",
