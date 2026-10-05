@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Check the CI run of the compose smoke job + mutmut fix (backend, docker, compose-smoke; mutmut only on the PR); then merge the branch via PR (server switches back to `main`). Then mutmut survivor triage. Branch `stage2-contract-tests`.
+Mutmut survivor triage by impact (policy in findings.md, Technical Decisions): `models`, `feeds`, `text` done (all accepted); next `fetcher` by function (`fetch_feed`, `parse_entries`, `store_result`, `run_fetch`), then the parts of `api`, `config`, `logs`, `timestamps` added since the 2026-10-04 triage. Branch `stage2-mutmut-triage`; then Phase 3.
 
 ## Current Phase
 
-Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing, `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy, merge to `main`, contract coverage, spec's global rules (404/405/422), token middleware, 413, logging, Schemathesis, CI, timestamp range, test deploy done; next compose smoke job in CI, merge)
+Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing, `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy, merge to `main`, contract coverage, spec's global rules (404/405/422), token middleware, 413, logging, Schemathesis, CI, timestamp range, test deploy, compose smoke job, merge to `main` (PR #2) done; next mutmut survivor triage)
 
 ## Phases
 
@@ -53,7 +53,8 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 - [x] Bearer token auth (2026-10-03): app-level dependency + `PUBLIC_PATHS` allowlist, constant-time compare, fails closed without a ≥32-char token
 - [x] Mutation checks as a script (2026-10-03): `backend/scripts/mutants.py`, curated mutants (55 by 2026-10-05), all killed; documented in `backend/tests/README.md`
 - [x] mutmut adopted as an exploration tool (2026-10-03): `backend/scripts/run_mutmut.py`, config in `pyproject.toml`; gaps it found closed with tests (empty query params, golden dedup keys, redirects, User-Agent, missing author, updated-only date, truncation whitespace)
-- [ ] Triage the remaining mutmut survivors before finishing stage 2 (2026-10-04: 147 total, 79% score; `queue`/`swipes`/`api`/`saved`/`feed_health`/`safe_fetch`/`extraction` already triaged as noise/equivalent in findings.md; open: `fetcher` 108, `models` 5, `text` 4, `feeds` 1)
+- [x] Contract coverage, input hardening, Schemathesis, CI; merged via PR #2 (2026-10-05, `7531460`), server back on `main`
+- [ ] Triage the remaining mutmut survivors by impact before finishing stage 2 (2026-10-05 run: 347 survived, 79%; `queue`/`swipes`/`saved`/`feed_health`/`safe_fetch`/`extraction` and the 2026-10-04 state of `api` triaged in findings.md; `models` 4, `feeds` 1, `text` 4 accepted 2026-10-05; open: `fetcher` 101, plus whatever `ebcbb3c` added to `api` (115), `config` 21, `logs` 8, `timestamps` 1)
 - [x] `GET /queue` + `POST /swipes` (2026-10-04): `queue.py` (round-robin), `swipes.py` (idempotent batch, item flag, saved on save), per-request transaction; smoke-tested on a copy of the dev DB
 - [x] Log every `422` on `POST /swipes` (swipe_ids, errors, body) via an exception handler (2026-10-04)
 - [x] Architecture diagrams (2026-10-04): `docs/architecture.md`, Mermaid diagrams (18 by 2026-10-04, incl. read endpoints, extraction job, SSRF guard), validated with Mermaid 10 and 11
@@ -198,6 +199,7 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | Schemathesis registered auth, not a forced header | It must be able to leave the token out on purpose |
 | Strict query parameters via app-level dependency, own walk of the dependency tree | Secure by default (new routes strict automatically); FastAPI's flattening helper is internal (`get_flat_dependant` gone in 0.142) |
 | PyYAML as an explicit dev dependency; `pythonpath = ["tests"]` for test helpers | Tests declare what they use (was only transitive via the model generator); `conftest.py` imports `tests/contract.py` |
+| README conventions (2026-10-05, user request after research) | Tables only for rows with several short attributes, cells about one line; one description per item → bullet list; reference parts (what each test file covers) terse and grouped like the code; short table of contents only in long READMEs (tests README), GitHub's outline covers the rest |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 
 ## Errors Encountered

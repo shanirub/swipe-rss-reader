@@ -22,7 +22,7 @@ The three tracking files (`task_plan.md`, `progress.md`, `findings.md`) and the 
 ├── task_plan.md             execution tracking (phases, next step, decisions)    ┐ planning-with-files
 ├── progress.md              session log, test results, errors                   │ (Claude Code skill)
 ├── findings.md              research notes, server inventory                    ┘
-├── .github/workflows/ci.yml  CI: lint, tests, mutation checks, Docker build, compose smoke test (mutmut on PRs)
+├── .github/workflows/ci.yml  CI jobs, see backend/tests/README.md
 ├── compose.yaml             Docker Compose: migrate, scheduler, api (127.0.0.1:8001), log rotation
 ├── .env.example             template for .env (API token, optional log level); .env itself is never committed
 ├── docs/
@@ -68,14 +68,40 @@ An `android/` directory follows in stage 5.
 
 All development happens on the desktop; the server only pulls committed code and runs the containers.
 
+Prerequisites: [uv](https://docs.astral.sh/uv/) (it installs the pinned Python, 3.14) and Docker with Compose.
+
+### Setup
+
 ```sh
-cd backend
-uv run ruff check . && uv run ruff format --check . && uv run pytest   # lint + tests
-uv run datamodel-codegen                                                # regenerate API models after editing api/openapi.yaml
-SWIPE_RSS_API_TOKEN=... uv run uvicorn swipe_rss.api:create_app --factory --port 8001   # run the API locally
-uv run python scripts/mutants.py                                        # mutation checks: do the guard tests catch real bugs?
-uv run python scripts/run_mutmut.py                                     # generated mutation testing: find untested code (mutmut)
-docker compose up --build                                               # run the stack locally (from the repo root)
+cp .env.example .env     # then set SWIPE_RSS_API_TOKEN (see the comments in the file)
+cd backend && uv sync    # create the virtual environment
 ```
 
-Deploy on the server: `git pull && docker compose up -d --build`. The `api` service needs `.env` (see `.env.example`) with `SWIPE_RSS_API_TOKEN`; without it only the API refuses to start.
+### Everyday commands
+
+From `backend/`:
+
+```sh
+uv run ruff check . && uv run ruff format --check .   # lint
+uv run pytest                                         # tests
+uv run datamodel-codegen                              # regenerate the API models after editing api/openapi.yaml
+```
+
+Run the API alone, or the whole stack:
+
+```sh
+SWIPE_RSS_API_TOKEN=... uv run uvicorn swipe_rss.api:create_app --factory --port 8001   # from backend/
+docker compose up --build                                                              # from the repo root
+```
+
+Mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the CI jobs are described in [`backend/tests/README.md`](backend/tests/README.md).
+
+### Deploy
+
+On the server, from the repo root:
+
+```sh
+git pull && docker compose up -d --build
+```
+
+The `api` service needs `.env` with `SWIPE_RSS_API_TOKEN`; without it only the API refuses to start, the other services keep running.
