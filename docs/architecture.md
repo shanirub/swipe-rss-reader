@@ -647,5 +647,6 @@ flowchart LR
     mutants --> docker["optional: docker compose up --build"]
     docker --> recheck["recheck all maintained .md files"]
     recheck --> commit["commit + push"]
-    commit --> deploy["server: git pull,<br/>docker compose up -d --build<br/>(after approval)"]
+    commit --> ci["CI on GitHub: lint, tests, curated mutants,<br/>Docker build, compose smoke<br/>(mutmut on pull requests)"]
+    ci --> deploy["server: git pull,<br/>docker compose up -d --build<br/>(after approval)"]
 ```

@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Check the first CI run on GitHub; then deploy the branch (user approval; changes API behaviour: token before everything, 413, strict validation, log rotation) and merge it via PR. Then mutmut survivor triage. Branch `stage2-contract-tests`.
+Check the CI run of the compose smoke job + mutmut fix (backend, docker, compose-smoke; mutmut only on the PR); then merge the branch via PR (server switches back to `main`). Then mutmut survivor triage. Branch `stage2-contract-tests`.
 
 ## Current Phase
 
-Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing, `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy, merge to `main`, contract coverage, spec's global rules (404/405/422), token middleware, 413, logging, Schemathesis, CI, timestamp range done and committed; next first CI run + deploy)
+Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing, `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy, merge to `main`, contract coverage, spec's global rules (404/405/422), token middleware, 413, logging, Schemathesis, CI, timestamp range, test deploy done; next compose smoke job in CI, merge)
 
 ## Phases
 
@@ -69,7 +69,9 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 - [x] Token check as ASGI middleware before routing (1a); 413 above 10 MB (2); logging: `SWIPE_RSS_LOG_LEVEL`, Compose rotation, capped body + errors without repeated input, no health-check access log (3) (2026-10-05)
 - [x] Schemathesis (2026-10-05, `test_schemathesis.py`): found 5 bugs, all fixed: lax types, 64-bit overflow → 500, invalid UTF-8 → 500, non-UTF-8 `feeds.toml` → 500, timestamps leaving datetime's range → 500 (next item); plus integral floats wrongly rejected by my first strict-mode fix; regression tests + curated mutants for each
 - [x] Timestamp range (2026-10-05, user: option b+ after option a turned out to break the generated models): 1970 ≤ t < 3000 in the spec's descriptions, `timestamps.py`, Pydantic `ge`/`lt` in the API, fetcher stores out-of-range dates as null, Schemathesis `map_body` hook moves generated years into the range (a filter discarded ~9/10 and failed Hypothesis' health check); 5 runs × 500 examples clean
-- [x] CI workflow (2026-10-05, `.github/workflows/ci.yml`): validated against GitHub's schema, first real run after the next push
+- [x] CI workflow (2026-10-05, `.github/workflows/ci.yml`): jobs backend + docker; first run failed on `setup-uv@v10` (no such tag), fixed (`88dc588`); second run: lint, tests, curated mutants green on GitHub
+- [x] Compose smoke job (2026-10-05, user request): `docker compose up --wait api` (migrate + api, no scheduler), checks migrate exit 0, health, 401/200, `/feeds`; same steps verified locally in a git worktree
+- [x] Test deploy of the branch (2026-10-05, user OK incl. one-time branch switch by Claude): server on `stage2-contract-tests` at `88dc588`; api healthy, no token → 401 for every path/method/body, rotation + log level active, scheduler without token, DB intact
 - [x] Test categories table in `backend/tests/README.md` (timeless examples; spec → code and code → spec as two rows; Schemathesis row)
 - **Status:** in_progress
 
@@ -185,12 +187,14 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | Token check moves to ASGI middleware before routing (2026-10-05, user: option 1a) | FastAPI parsed JSON bodies before dependencies: unauthenticated broken bodies got 422, were read into memory and logged. Now nothing but `/health` is read or routed without the token; consequence: unknown path without token → 401 (no route probing) |
 | Request bodies limited to 10 MB → 413 (2026-10-05, user) | Largest legitimate batch ≈ 9 MB (500 × ~18 KB, ASCII); uvicorn has no limit |
 | Logging (2026-10-05, user: all four) | `SWIPE_RSS_LOG_LEVEL` (default INFO) for jobs and API; Compose log rotation (json-file 10 MB × 3); rejected-batch body capped in the log (single-swipe resends carry the full data); health checks dropped from the access log (99.8% of API log lines) |
-| CI on GitHub Actions on every push (2026-10-05, user) | Public repo, standard runners: ruff, pytest, curated mutants, Docker build, Schemathesis; mutmut as a report, not a gate |
+| CI on GitHub Actions on every push (2026-10-05, user) | Public repo, standard runners: ruff, pytest (incl. Schemathesis), curated mutants, Docker build, compose smoke test. mutmut (report, not a gate) only on pull requests + manual trigger (user, 2026-10-05): ~10–15 min on a runner |
 | Schemathesis added (2026-10-05, user) | Property-based: generated inputs from the spec find cases no example test covers |
 | Strict JSON validation of swipe bodies, integral floats normalized (2026-10-05) | Spec types are JSON Schema; FastAPI's lax mode converted `0` into a timestamp and `"5"` into an integer (found by Schemathesis) |
 | Integer maxima in the spec: `app_version` ≤ 2147483647, `time_to_swipe_ms` ≤ 2⁶³−1 (2026-10-05) | 2⁶³ crashed the insert with 500; Android's versionCode is 32-bit, SQLite INTEGER is 64-bit |
 | Timestamp range 1970 ≤ t < 3000, in descriptions + `timestamps.py` (option b+) | JSON Schema has no date-range keyword; `pattern` on date-time makes the generated models raise TypeError on every value; Pydantic `ge`/`lt` works in our validation step |
 | Schemathesis `map_body` (not `filter_body`) for the documented timestamp range | A filter discarded ~90% of bodies (Hypothesis `filter_too_much`); `2000 + year % 400` keeps leap days valid |
+| Compose smoke job in CI without the scheduler | Tests the system start as on the server; the scheduler would fetch real feeds (flaky, external) |
+| Test deploy by Claude switching the server checkout to the branch (2026-10-05) | User approved as a one-time exception to the deploy rule |
 | Schemathesis registered auth, not a forced header | It must be able to leave the token out on purpose |
 | Strict query parameters via app-level dependency, own walk of the dependency tree | Secure by default (new routes strict automatically); FastAPI's flattening helper is internal (`get_flat_dependant` gone in 0.142) |
 | PyYAML as an explicit dev dependency; `pythonpath = ["tests"]` for test helpers | Tests declare what they use (was only transitive via the model generator); `conftest.py` imports `tests/contract.py` |
@@ -215,6 +219,7 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | Server: DB volume deleted during Docker cleanup (2026-10-04) | 1 | Not recoverable (snapshot was in the same volume); no swipes existed, items refetched. Backups are stage 4 |
 | `ModuleNotFoundError: contract` loading `conftest.py` (2026-10-04) | 1 | pytest 9 doesn't put `tests/` on `sys.path`; `pythonpath = ["tests"]` |
 | `ImportError: get_flat_dependant` (FastAPI 0.142, 2026-10-04) | 1 | Internal helper renamed; own walk of the dependency tree with public attributes |
+| CI: mutmut step hung 22+ min; locally `INTERNALERROR KeyError` on Schemathesis node ids (2026-10-05) | 1 | mutmut ignores `test_schemathesis.py`; hung run cancelled; mutmut now its own CI job (PRs + manual, 30-min limit) |
 | CI: `Unable to resolve action astral-sh/setup-uv@v10` (2026-10-05) | 1 | I assumed a major-only tag like `actions/checkout@v7`; setup-uv publishes only full versions → `v10.2.0` |
 | Curated mutant "token check removed" STALE after changing `dependencies=[...]` (2026-10-04) | 1 | Snippet updated; the STALE verdict did its job (a stale mutant checks nothing) |
 | Unauthenticated broken body got 422 and was logged (2026-10-05) | 1 | FastAPI parses bodies before dependencies; token check moved to ASGI middleware |

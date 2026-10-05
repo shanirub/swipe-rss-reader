@@ -76,5 +76,9 @@ also_copy = ["alembic/", "alembic.ini"]
 pytest_add_cli_args = [
     "--deselect", "tests/test_api_models.py::test_generated_models_are_fresh",
     "--deselect", "tests/test_feeds.py::test_repo_feeds_file_is_valid",
+    # Schemathesis generates its test cases at run time, which crashes mutmut's per-test timing
+    # (KeyError on the generated node ids); its random inputs would also make mutant results
+    # non-reproducible. It still runs in the normal pytest run.
+    "--ignore", "tests/test_schemathesis.py",
     "-W", "ignore",
 ]

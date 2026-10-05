@@ -262,6 +262,16 @@
 - Tests 255 → 315 (plus 6 Schemathesis operations as subtests); curated mutants 43 → 55 (full run 53/53 before the last 2, which are killed too).
 - Files: `backend/src/swipe_rss/{api,config,cli,feeds,fetcher,logs,timestamps}.py` (`logs.py`, `timestamps.py` new), `backend/tests/{test_api_input,test_logs,test_schemathesis,test_timestamps}.py` (new), `backend/tests/{test_api,test_contract,test_feeds,test_fetcher,contract}.py`, `backend/scripts/mutants.py`, `backend/pyproject.toml`, `backend/uv.lock`, `backend/.dockerignore`, `api/openapi.yaml`, `backend/src/swipe_rss/api_models.py` (regenerated), `compose.yaml`, `.env.example`, `.github/workflows/ci.yml` (new), `backend/tests/README.md`, `README.md`, `docs/architecture.md`, `PROJECT_PLAN.md`, plan files
 
+### CI fix, test deploy, compose smoke job (2026-10-05)
+
+- **Status:** complete
+- First CI run: backend job failed at "Set up job" (`setup-uv@v10` doesn't exist), docker job green. Pinned `v10.2.0` (`88dc588`); second run: lint, tests (incl. Schemathesis), curated mutants green on GitHub.
+- User asked what the two jobs do and whether backend includes docker (no: the tests call the code directly; Docker only packages it). Gap found: nothing starts the whole system in CI → compose smoke job added (user request), verified locally with the workflow's exact steps in a git worktree.
+- Test deploy (user OK, one-time branch switch by Claude): server on `stage2-contract-tests`, `docker compose up -d --build` fine; read-only checks all as intended (see Test Results).
+- mutmut hung in that CI run (crash on Schemathesis' generated test ids); run cancelled; mutmut now ignores `test_schemathesis.py`. Fresh full run locally: 120 s on 28 cores, score 79%. User decision: mutmut only on pull requests + manual trigger → its own CI job (30-min limit).
+- `.md` recheck before commit: mutmut time limit in three files (15 min step → 30 min job), mutmut runtime (~7 s / ~6 s → ~2 min) in the tests README and `run_mutmut.py`, reboot table, dev-loop diagram gets the CI step (18 diagrams validate). Committed and pushed.
+- Files: `.github/workflows/ci.yml`, `backend/pyproject.toml`, `README.md`, `backend/tests/README.md`, plan files
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -317,6 +327,9 @@
 | Contract curated mutants | `mutants.py contract` | all killed | 3/3 by expected tests | pass |
 | Container smoke (middleware, 413, logs) | compose test project, curl | 401 before body/routing, 413, no health-check lines, rotation | as expected | pass |
 | Schemathesis 50/op | `pytest tests/test_schemathesis.py` | no failures | pass after the fixes | pass |
+| Second CI run (GitHub Actions) | push of `88dc588` | all green | docker ✅; backend: lint ✅, tests ✅, curated mutants ✅; mutmut hung (crash on Schemathesis), run cancelled | partial |
+| Test deploy of the branch | server, `docker compose up -d --build` | healthy, new rules live | api healthy; no token → 401 for `/queue`, unknown path, broken body, DELETE; rotation 10m×3, level INFO; scheduler without token; DB `0003`, 30 items | pass |
+| Compose smoke steps, locally | git worktree, `COMPOSE_PROJECT_NAME=swipe-rss-ci` | as in CI | migrate 0, api healthy, health 200, queue 401/200, feeds 200, no scheduler | pass |
 | First CI run (GitHub Actions) | push of `ebcbb3c` | both jobs green | docker ✅; backend ❌ at "Set up job" (`setup-uv@v10` doesn't exist) | fail |
 | Schemathesis 500/op, 5 runs | `max_examples=500` temporarily | no failures | 5/5 clean after the timestamp range (before: ~1 in 3 runs hit year 0) | pass |
 | Global rules tests | `uv run pytest` | all pass, contract check silent | 255 passed (contract check first flagged the new 422s, then silent) | pass |
@@ -351,12 +364,13 @@
 | 2026-10-05 | Spec `pattern` on date-time: generated model raises TypeError for every value | 1 | Verified on a sample spec before touching the real one; option b+ instead |
 | 2026-10-05 | Schemathesis `filter_body`: Hypothesis `filter_too_much` | 1 | `map_body` moving the year into the range |
 | 2026-10-05 | First CI run: `Unable to resolve action astral-sh/setup-uv@v10` (backend job; docker job passed) | 1 | setup-uv publishes no major-only tag; pinned `v10.2.0` |
+| 2026-10-05 | Second CI run: mutmut step hung 22+ min (locally: `INTERNALERROR KeyError` for Schemathesis node ids) | 1 | mutmut ignores `test_schemathesis.py`; run cancelled; mutmut now its own job (PRs + manual, 30-min limit) |
 
 ## 5-Question Reboot Check
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy done; `phase2` merged into `main`; on branch `stage2-contract-tests`: contract coverage, spec's global rules, token middleware, 413, logging, Schemathesis (5 bugs fixed), timestamp range, CI workflow (committed `ebcbb3c`; first CI run failed on an action tag, fix pinned); next: green CI run, deploy |
+| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy done; `phase2` merged into `main`; on branch `stage2-contract-tests`: contract coverage, spec's global rules, token middleware, 413, logging, Schemathesis (5 bugs fixed), timestamp range, CI workflow (`ebcbb3c`, action tag fixed in `88dc588`), test deploy of the branch on the server, compose smoke job, mutmut as a PR/manual job; next: green CI run, PR + merge, server back to `main` |
 | Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |

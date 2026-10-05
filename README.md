@@ -22,7 +22,7 @@ The three tracking files (`task_plan.md`, `progress.md`, `findings.md`) and the 
 ├── task_plan.md             execution tracking (phases, next step, decisions)    ┐ planning-with-files
 ├── progress.md              session log, test results, errors                   │ (Claude Code skill)
 ├── findings.md              research notes, server inventory                    ┘
-├── .github/workflows/ci.yml  CI on every push: lint, tests, mutation checks, Docker build
+├── .github/workflows/ci.yml  CI: lint, tests, mutation checks, Docker build, compose smoke test (mutmut on PRs)
 ├── compose.yaml             Docker Compose: migrate, scheduler, api (127.0.0.1:8001), log rotation
 ├── .env.example             template for .env (API token, optional log level); .env itself is never committed
 ├── docs/

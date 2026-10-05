@@ -1,6 +1,6 @@
 # Backend tests
 
-Run from `backend/`: `uv run pytest`. CI (`.github/workflows/ci.yml`) runs lint, the tests, the curated mutation checks, a mutmut report and a Docker build on every push.
+Run from `backend/`: `uv run pytest`. CI (`.github/workflows/ci.yml`) runs on every push, in three parallel jobs: **backend** (lint, the tests, the curated mutation checks; no Docker, the tests call the code directly), **docker** (the image builds and the app imports inside it) and **compose-smoke** (`docker compose up` of `migrate` + `api` as on the server: migrate exits 0, api becomes healthy, `/health`, auth and `/feeds` answer; the scheduler stays off because it would fetch real feeds). A fourth job, **mutmut**, runs only for pull requests and on demand ("Run workflow" on GitHub): it takes ~10–15 min on a GitHub runner and is a report, not a gate.
 
 ## Test categories
 
@@ -54,11 +54,11 @@ When to run it: after changing a guard test or the code a mutant targets, and wh
 
 ```sh
 cd backend
-uv run python scripts/run_mutmut.py                  # whole backend (~7 s)
+uv run python scripts/run_mutmut.py                  # whole backend (~2 min on 28 cores, ~10–15 min on a GitHub runner)
 uv run python scripts/run_mutmut.py fetcher --show   # one module, with the diff of every survivor
 ```
 
-Surviving mutants need triage: a **real gap** (write a test), **equivalent** (the change can't alter behaviour) or **noise** (e.g. a log message). `no tests` means no test runs that code at all (currently `cli.py`, `config.py`). The score (killed / (killed + survived)) is a trend to watch, not a target; 100% is not achievable. Configuration: `[tool.mutmut]` in `pyproject.toml`; two path-dependent tests are deselected there because mutmut runs the tests from a copy in `backend/mutants/` (git- and docker-ignored). The script's docstring explains all of this in detail. Exploration, not a gate: it exits 0 even with survivors.
+Surviving mutants need triage: a **real gap** (write a test), **equivalent** (the change can't alter behaviour) or **noise** (e.g. a log message). `no tests` means no test runs that code at all (currently `cli.py`, `config.py`). The score (killed / (killed + survived)) is a trend to watch, not a target; 100% is not achievable. Configuration: `[tool.mutmut]` in `pyproject.toml`; two path-dependent tests are deselected there because mutmut runs the tests from a copy in `backend/mutants/` (git- and docker-ignored), and `test_schemathesis.py` is ignored (its generated test ids crash mutmut, and its random inputs would make results non-reproducible). The script's docstring explains all of this in detail. Exploration, not a gate: it exits 0 even with survivors.
 
 ## Test files
 

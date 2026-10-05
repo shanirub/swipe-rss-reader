@@ -19,7 +19,8 @@ HOW TO USE
     uv run python scripts/run_mutmut.py --show           # also print the diff of every survivor
     uv run python scripts/run_mutmut.py --fresh          # discard mutmut's cached results first
 
-    It takes seconds (about 6 s for the whole backend on a 28-core desktop): mutmut 3 compiles all
+    It is fast for what it does (about 2 minutes for the whole backend on a 28-core desktop as of
+    2026-10-05, ~1,700 mutants; 10–15 minutes on a 4-core CI runner): mutmut 3 compiles all
     mutants into the code once behind a switch, forks workers from a warm process and runs only
     the tests that cover the mutated function. mutmut caches results in backend/mutants/
     (git-ignored) and re-tests only what changed; use --fresh if results look out of date.
