@@ -133,6 +133,7 @@ Initial snapshot; lines marked → were changed later in stage 0 (see Current st
   - Timestamp range (2026-10-05): datamodel-code-generator copies a `pattern` onto an `AwareDatetime` field, and Pydantic then raises `TypeError: Unable to apply constraint 'pattern' ... for schema of type 'datetime'` for every value (verified on a sample spec). Pydantic's `Field(ge=..., lt=...)` on `AwareDatetime` works and compares in absolute time across offsets. Python's own comparison can raise `OverflowError` at datetime's edges → `in_range` treats that as out of range.
   - Schemathesis' `filter_body` hook discarding out-of-range timestamps tripped Hypothesis' `filter_too_much` health check (8 kept, 50 discarded): generated years span 0001–9999. `map_body` shifting the year (`2000 + year % 400`, leap years preserved) avoids it.
   - Generated model lines can't be wrapped by the generator's formatter when a description string is long → keep spec descriptions short (lint covers `api_models.py`).
+  - GitHub Actions: `actions/checkout` publishes major tags (`v7`), `astral-sh/setup-uv` does not (only `v10.2.0` etc.; `v10` fails at "Set up job"). Check `repos/<owner>/<action>/git/ref/tags/<tag>` before using a short tag.
   - All `TestClient` verbs go through `TestClient.request`, so wrapping that one method records every test request without touching existing tests. mutmut still works (spec found by walking up from the copied tests).
 
 ## Technical Decisions

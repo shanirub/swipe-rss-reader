@@ -317,6 +317,7 @@
 | Contract curated mutants | `mutants.py contract` | all killed | 3/3 by expected tests | pass |
 | Container smoke (middleware, 413, logs) | compose test project, curl | 401 before body/routing, 413, no health-check lines, rotation | as expected | pass |
 | Schemathesis 50/op | `pytest tests/test_schemathesis.py` | no failures | pass after the fixes | pass |
+| First CI run (GitHub Actions) | push of `ebcbb3c` | both jobs green | docker ✅; backend ❌ at "Set up job" (`setup-uv@v10` doesn't exist) | fail |
 | Schemathesis 500/op, 5 runs | `max_examples=500` temporarily | no failures | 5/5 clean after the timestamp range (before: ~1 in 3 runs hit year 0) | pass |
 | Global rules tests | `uv run pytest` | all pass, contract check silent | 255 passed (contract check first flagged the new 422s, then silent) | pass |
 | Global rules mutants | `mutants.py contract api:` | all killed | 8/9, then 9/9 after adding the dependency-parameter test | pass |
@@ -349,12 +350,13 @@
 | 2026-10-05 | My strict validation rejected `180.0`; my error responses crashed on non-UTF-8 bytes | 2 | Found by Schemathesis; integral floats normalized, inputs decoded as text |
 | 2026-10-05 | Spec `pattern` on date-time: generated model raises TypeError for every value | 1 | Verified on a sample spec before touching the real one; option b+ instead |
 | 2026-10-05 | Schemathesis `filter_body`: Hypothesis `filter_too_much` | 1 | `map_body` moving the year into the range |
+| 2026-10-05 | First CI run: `Unable to resolve action astral-sh/setup-uv@v10` (backend job; docker job passed) | 1 | setup-uv publishes no major-only tag; pinned `v10.2.0` |
 
 ## 5-Question Reboot Check
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy done; `phase2` merged into `main`; on branch `stage2-contract-tests`: contract coverage, spec's global rules, token middleware, 413, logging, Schemathesis (5 bugs fixed), timestamp range, CI workflow; next: commit, first CI run, deploy |
+| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy done; `phase2` merged into `main`; on branch `stage2-contract-tests`: contract coverage, spec's global rules, token middleware, 413, logging, Schemathesis (5 bugs fixed), timestamp range, CI workflow (committed `ebcbb3c`; first CI run failed on an action tag, fix pinned); next: green CI run, deploy |
 | Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |

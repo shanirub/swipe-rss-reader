@@ -215,6 +215,7 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | Server: DB volume deleted during Docker cleanup (2026-10-04) | 1 | Not recoverable (snapshot was in the same volume); no swipes existed, items refetched. Backups are stage 4 |
 | `ModuleNotFoundError: contract` loading `conftest.py` (2026-10-04) | 1 | pytest 9 doesn't put `tests/` on `sys.path`; `pythonpath = ["tests"]` |
 | `ImportError: get_flat_dependant` (FastAPI 0.142, 2026-10-04) | 1 | Internal helper renamed; own walk of the dependency tree with public attributes |
+| CI: `Unable to resolve action astral-sh/setup-uv@v10` (2026-10-05) | 1 | I assumed a major-only tag like `actions/checkout@v7`; setup-uv publishes only full versions → `v10.2.0` |
 | Curated mutant "token check removed" STALE after changing `dependencies=[...]` (2026-10-04) | 1 | Snippet updated; the STALE verdict did its job (a stale mutant checks nothing) |
 | Unauthenticated broken body got 422 and was logged (2026-10-05) | 1 | FastAPI parses bodies before dependencies; token check moved to ASGI middleware |
 | Logged errors repeated the input per error (2026-10-05) | 1 | Found by the log-cap test; errors logged as type/loc/msg |

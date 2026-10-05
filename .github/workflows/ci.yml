@@ -19,7 +19,7 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.2.0  # no major-only tag (v10) is published
         with:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
