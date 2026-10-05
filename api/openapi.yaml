@@ -13,7 +13,18 @@ info:
     - Fields are required but nullable: always present, `null` when there is no value.
     - Evolution: new request fields must be optional; existing request rules are never tightened
       (swipes queued on the phone must stay valid).
-    - Only `/health` is unauthenticated.
+    - Only `/health` is unauthenticated. The token is checked before anything else, before routing
+      and before the body is read: without a valid token, every other path and method returns 401.
+    - Request timestamps (`swiped_at`, the card's `fetched_at` and `published_at`) must lie in
+      1970-01-01T00:00:00Z ≤ t < 3000-01-01T00:00:00Z (422 otherwise); stated in each field's description.
+    - Request bodies larger than 10 MB (10485760 bytes) are refused with 413 (`Error` body), before
+      they are parsed. Clients keep batches well below that.
+    - Unknown query parameters are rejected with 422 (same format as other validation errors), except
+      on `/health`. Introduced 2026-10-04, before any client existed: a one-time exception to the
+      "never tighten" rule above (swipe bodies were not affected).
+    - With a valid token, a path not listed here returns 404 (`Error` body), and a method not listed for
+      a path returns 405 (`Error` body) with an `Allow` header naming the valid methods. These can't be
+      attached to individual operations, so they are stated here and tested.
 servers:
   - url: https://my-first-server.porcupine-celsius.ts.net:8443
     description: Tailscale Serve (tailnet only)
@@ -93,6 +104,12 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "422":
           $ref: "#/components/responses/ValidationFailed"
+        "413":
+          description: Request body larger than 10 MB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /saved:
     get:
@@ -108,6 +125,8 @@ paths:
                 $ref: "#/components/schemas/SavedListResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
 
   /saved/{feed_id}/{item_key}/content:
     get:
@@ -150,6 +169,8 @@ paths:
                 $ref: "#/components/schemas/FeedListResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
         "503":
           description: feeds.toml is invalid (the fetcher is not running either); `detail` says why
           content:
@@ -250,9 +271,11 @@ components:
         published_at:
           type: [string, "null"]
           format: date-time
+          description: 1970-01-01T00:00:00Z ≤ t < 3000-01-01T00:00:00Z (server-enforced, 422).
         fetched_at:
           type: string
           format: date-time
+          description: 1970-01-01T00:00:00Z ≤ t < 3000-01-01T00:00:00Z (server-enforced, 422).
         author:
           type: [string, "null"]
           maxLength: 500
@@ -287,7 +310,7 @@ components:
         swiped_at:
           type: string
           format: date-time
-          description: Phone clock; must include an offset.
+          description: Phone clock with offset; 1970-01-01T00:00:00Z ≤ t < 3000-01-01T00:00:00Z (422 otherwise).
         tz_offset_minutes:
           type: integer
           minimum: -840
@@ -296,10 +319,12 @@ components:
         time_to_swipe_ms:
           type: [integer, "null"]
           minimum: 0
+          maximum: 9223372036854775807  # largest SQLite INTEGER
           description: How long the card was on screen; null if unknown.
         app_version:
           type: integer
           minimum: 1
+          maximum: 2147483647  # Android versionCode is a 32-bit int
           description: App versionCode.
         card:
           $ref: "#/components/schemas/Card"

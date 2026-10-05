@@ -44,8 +44,13 @@ class Card(BaseModel):
         str | None,
         Field(description="Normalized article URL; null if missing or longer than the limit.", max_length=4096),
     ]
-    published_at: AwareDatetime | None
-    fetched_at: AwareDatetime
+    published_at: Annotated[
+        AwareDatetime | None,
+        Field(description="1970-01-01T00:00:00Z ≤ t < 3000-01-01T00:00:00Z (server-enforced, 422)."),
+    ]
+    fetched_at: Annotated[
+        AwareDatetime, Field(description="1970-01-01T00:00:00Z ≤ t < 3000-01-01T00:00:00Z (server-enforced, 422).")
+    ]
     author: Annotated[str | None, Field(max_length=500)]
     tags: Annotated[list[Tag], Field(max_length=50)]
 
@@ -60,12 +65,15 @@ class Swipe(BaseModel):
     )
     swipe_id: Annotated[UUID, Field(description="Generated on the phone at swipe time; idempotency key.")]
     action: Action
-    swiped_at: Annotated[AwareDatetime, Field(description="Phone clock; must include an offset.")]
+    swiped_at: Annotated[
+        AwareDatetime,
+        Field(description="Phone clock with offset; 1970-01-01T00:00:00Z ≤ t < 3000-01-01T00:00:00Z (422 otherwise)."),
+    ]
     tz_offset_minutes: Annotated[int, Field(description="Phone's UTC offset at swipe time.", ge=-840, le=840)]
     time_to_swipe_ms: Annotated[
-        int | None, Field(description="How long the card was on screen; null if unknown.", ge=0)
+        int | None, Field(description="How long the card was on screen; null if unknown.", ge=0, le=9223372036854775807)
     ]
-    app_version: Annotated[int, Field(description="App versionCode.", ge=1)]
+    app_version: Annotated[int, Field(description="App versionCode.", ge=1, le=2147483647)]
     card: Card
 
 

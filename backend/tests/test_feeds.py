@@ -43,3 +43,11 @@ def test_invalid_files_raise(tmp_path, text):
 def test_missing_file_raises(tmp_path):
     with pytest.raises(FeedsFileError):
         load_feeds(tmp_path / "nope.toml")
+
+
+def test_file_that_is_not_utf8_is_invalid(tmp_path):
+    # TOML is UTF-8; a file saved in another encoding must be "invalid", not a crash.
+    path = tmp_path / "feeds.toml"
+    path.write_bytes('[[feeds]]\nid = "a"\nurl = "https://example.com/feed"\nname = "caf\u00e9"\n'.encode("latin-1"))
+    with pytest.raises(FeedsFileError):
+        load_feeds(path)

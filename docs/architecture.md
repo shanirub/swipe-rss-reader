@@ -11,7 +11,7 @@ Contents:
 3. [Database schema](#3-database-schema-er-diagram): tables and keys
 4. [Database models](#4-database-models-class-diagram) and [API models](#5-api-models-class-diagram)
 5. [Fetch run](#6-fetch-run-sequence) and [one feed entry through ingest](#7-one-feed-entry-through-ingest-flowchart)
-6. [Authentication](#8-authentication-flowchart)
+6. [Request checks](#8-request-checks-token-size-routing-validation-flowchart)
 7. [`GET /queue`](#9-get-queue-sequence), [`POST /swipes`](#10-post-swipes-sequence) and the [read endpoints](#11-get-feeds-get-saved-and-saved-content-sequence)
 8. [Extraction job](#12-extraction-job-sequence) and the [SSRF guard](#13-ssrf-guard-connect-time-check-flowchart)
 9. Lifecycles: [an item](#14-item-lifecycle-state-diagram) and [a saved entry](#15-saved-entry-extraction-state-diagram)
@@ -71,14 +71,16 @@ flowchart TD
     models["models.py<br/>database tables"]
     db["db.py<br/>SQLite engine"]
     config["config.py<br/>environment settings"]
+    logs["logs.py<br/>log level, access-log filter"]
+    stamps["timestamps.py<br/>API timestamp range"]
     alembic["alembic/<br/>migrations"]
 
     spec -. "datamodel-codegen" .-> api_models
-    cli --> config & db & feeds & fetcher & extraction
+    cli --> config & db & feeds & fetcher & extraction & logs
     extraction --> safe & models & text
     safe --> fetcher
-    fetcher --> feeds & dedup & text & models
-    api --> config & db & feeds & queue & swipes & saved & health & api_models
+    fetcher --> feeds & dedup & text & models & stamps
+    api --> config & db & feeds & queue & swipes & saved & health & api_models & logs & stamps
     saved --> api_models & models
     health --> api_models & feeds & models
     queue --> api_models & models
@@ -339,9 +341,9 @@ flowchart TD
     tomb -- no --> insert["insert tombstone and item<br/>item enters the queue"]
 ```
 
-## 8. Authentication (flowchart)
+## 8. Request checks: token, size, routing, validation (flowchart)
 
-Secure by default: the token check is an app-level dependency, so it runs before every route, however the route was registered. Only `PUBLIC_PATHS` skip it.
+Secure by default, in this order. The token check and the size limit are ASGI middleware, so they run before routing and before any body byte is parsed; without the token nothing else is revealed. The query-parameter check is an app-level dependency, so new routes are strict automatically.
 
 ```mermaid
 flowchart TD
@@ -350,14 +352,19 @@ flowchart TD
     strong -- yes --> ready["app running"]
 
     req(["incoming request"]) --> public{"path in PUBLIC_PATHS?<br/>(only /health)"}
-    public -- yes --> handler["route handler"]
-    public -- no --> header{"Authorization: Bearer ... header?"}
-    header -- "no, or another scheme" --> unauth["401 + WWW-Authenticate: Bearer"]
-    header -- yes --> compare{"hmac.compare_digest(token, expected)<br/>constant time"}
-    compare -- "no match" --> unauth
-    compare -- match --> validate{"query and body valid?"}
-    validate -- no --> invalid["422 (POST /swipes: also logged)"]
-    validate -- yes --> handler
+    public -- yes --> size
+    public -- no --> compare{"Authorization: Bearer token<br/>hmac.compare_digest, constant time"}
+    compare -- "missing, other scheme, no match" --> unauth["401 + WWW-Authenticate: Bearer<br/>(any path, any method, body not read)"]
+    compare -- match --> size{"body larger than 10 MB?<br/>(Content-Length or while streaming)"}
+    size -- yes --> toolarge["413"]
+    size -- no --> route{"path and method<br/>match a route?"}
+    route -- "unknown path" --> notfound["404"]
+    route -- "known path, wrong method" --> notallowed["405 + Allow header"]
+    route -- yes --> unknownq{"query parameter the route<br/>doesn't declare? (not /health)"}
+    unknownq -- yes --> invalid["422 (POST /swipes: also logged, capped)"]
+    unknownq -- no --> validate{"query and body valid?<br/>body: strict JSON types"}
+    validate -- no --> invalid
+    validate -- yes --> handler["route handler"]
 ```
 
 ## 9. `GET /queue` (sequence)
@@ -372,7 +379,7 @@ sequenceDiagram
     participant db as SQLite
 
     phone->>app: GET /queue?limit=50, Bearer token
-    app->>app: token check (see diagram 8)
+    app->>app: token, size and query checks (see diagram 8)
     alt bad or missing token
         app-->>phone: 401
     else limit outside 1..200
@@ -407,7 +414,7 @@ sequenceDiagram
     participant db as SQLite
 
     phone->>app: POST /swipes {"swipes": [...]}, Bearer token
-    app->>app: token check, then validate the whole batch
+    app->>app: token and size checks, then validate the whole batch (strict JSON types)
     alt any swipe invalid
         app->>app: log swipe_ids, errors and body (dead-letter trail)
         app-->>phone: 422, nothing stored
@@ -445,7 +452,7 @@ sequenceDiagram
     participant saved as saved.py
     participant db as SQLite
 
-    Note over phone,db: every request first passes the token check (diagram 8)
+    Note over phone,db: every request first passes the checks of diagram 8
 
     phone->>app: GET /feeds
     app->>app: load_feeds(feeds.toml)
@@ -640,5 +647,6 @@ flowchart LR
     mutants --> docker["optional: docker compose up --build"]
     docker --> recheck["recheck all maintained .md files"]
     recheck --> commit["commit + push"]
-    commit --> deploy["server: git pull,<br/>docker compose up -d --build<br/>(after approval)"]
+    commit --> ci["CI on GitHub: lint, tests, curated mutants,<br/>Docker build, compose smoke<br/>(mutmut on pull requests)"]
+    ci --> deploy["server: git pull,<br/>docker compose up -d --build<br/>(after approval)"]
 ```

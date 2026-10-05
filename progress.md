@@ -228,6 +228,50 @@
 - Merge: test coverage doesn't gate it (no CI; contract tests and survivor triage finish stage 2, not the merge). PR `phase2` → `main` (user request); merge commit rather than squash (my choice: keeps the step-by-step history). Committed and pushed with the redeploy notes.
 - Redeploy (user-approved, run by Claude): `git pull && docker compose up -d --build`; the three parallel builds succeeded this time. Checks: stack healthy, migrate exit 0 (already at `0003`), files `644` inside the image, 22 items, `.env` now `600` (user), `/health` 200 and `/queue` 401 over the tailnet.
 
+### Phase 2: merge + contract coverage (Key Question 11, points c + d)
+
+- **Status:** complete
+- PR #1 merged; server back on `main` (user); `phase2` deleted locally and on GitHub (user OK). New branch `stage2-contract-tests`.
+- Testing discussion started: three meanings of "coverage" (lines run: 94%; bugs caught: mutation tests; contract: not measured). Points of KQ 11 reposted for the user. Decision: A (route-set equality) + B1 (recording fixture, full-run check).
+- `tests/contract.py`, hooks in `tests/conftest.py`, `tests/test_contract.py` (13 tests); PyYAML explicit dev dependency; `pythonpath = ["tests"]`.
+- Verified by sabotage (missing 503, undocumented 405, partial run silent); 3 curated mutants (38 total) all killed; mutmut still runs.
+- Files created/modified: `backend/tests/{contract,test_contract}.py` (new), `backend/tests/conftest.py`, `backend/pyproject.toml`, `backend/uv.lock`, `backend/scripts/mutants.py`, `backend/tests/README.md`, `PROJECT_PLAN.md`, plan files
+
+### Testing topic 2 (part 1): the spec's global rules
+
+- **Status:** complete
+- User asked whether "recorder" is a professional term: no, my class name; related terms test spy (Meszaros), instrumentation/monkey patching, API spec coverage, provider-side contract testing. Kept `Recorder`, docstring notes it.
+- Decided (user agreed): wrong method 405, unknown path 404, unknown query parameter 422 (strict, `/health` exempt) as global rules in the spec. Noted the conflict with "never tighten" → recorded as a one-time exception before any client existed.
+- Probed FastAPI first (404/405 bodies and `Allow`, scope route, query params); `get_flat_dependant` gone → own tree walk. Implemented `_reject_unknown_query_params` (app-level, after auth); spec rules + 422 on `/saved`, `/feeds`; recorder accepts wrong-method 405s only.
+- The recorder flagged the two new 422s as untested immediately; tests added. 5 curated mutants: 4 killed, 1 survived (dependency-declared parameters untested) → test added, killed. Also extended the recorder unit test (wrong method answering 200 must be reported).
+- Full curated run: 42/43, one STALE: the auth mutant's snippet was the `dependencies=[...]` line I had changed → snippet updated, KILLED again (43/43).
+- `.md` recheck before commit: both entries' statuses, three errors added to both error tables. Committed in one commit (the two steps share files; user prefers small commits from now on).
+- Diagram 8 is now "Routing and authentication" (404/405 before auth, query check after the token check); 18 diagrams validate in Mermaid 10/11.
+- Files modified: `backend/src/swipe_rss/api.py`, `api/openapi.yaml`, `backend/tests/{contract,test_contract}.py`, `backend/scripts/mutants.py`, `backend/tests/README.md`, `docs/architecture.md`, `PROJECT_PLAN.md`, plan files
+
+### Testing topic 2 (part 2): token first, size, logs, Schemathesis, CI (2026-10-05)
+
+- **Status:** complete
+- Probe for point (i) found: a broken body without token got 422 and was read and logged. User decisions: token check before routing (1a), 413 above 10 MB, all four logging changes, CI on every push, add Schemathesis, test categories table. User: no commit until the testing questions are done; ask immediately when blocked (Tailscale re-auth).
+- Measured server log volume (after user re-auth): see findings.
+- Implemented: `BearerTokenMiddleware` + `BodySizeLimitMiddleware` (`api.py`), `logs.py` + `SWIPE_RSS_LOG_LEVEL` (config, cli, api, Compose substitution), Compose log rotation, capped 422 log. Spec: auth-first rule, 413, integer maxima. Container smoke test: 401/404/422/413 (incl. chunked), no health checks in the access log, rotation active.
+- Schemathesis: 5 bugs found (see findings), all fixed with regression tests; strict JSON validation via `_strict_swipe_batch`.
+- Timestamp range: user chose (a) spec pattern; testing it on a sample spec showed the generated models raise TypeError for every value → asked again; user asked whether Pydantic can catch it (yes, `ge`/`lt`, verified; I had stated it too broadly) → (b+): range in descriptions, `timestamps.py`, Pydantic check, fetcher null, Schemathesis `map_body` with explanatory comment (user request). 5 × 500-example runs clean.
+- `.md` recheck before commit: Schemathesis bug count, KQ 11 status, test results, error log (6 rows for 2026-10-05), reboot table, file list, mutant run time (~1 → ~5 min, also in `mutants.py`). One commit for the whole testing work (user request), pushed.
+- CI workflow written and schema-validated (first real run after push). Test categories table in the tests README. Diagram 8 redrawn (request checks in order).
+- Tests 255 → 315 (plus 6 Schemathesis operations as subtests); curated mutants 43 → 55 (full run 53/53 before the last 2, which are killed too).
+- Files: `backend/src/swipe_rss/{api,config,cli,feeds,fetcher,logs,timestamps}.py` (`logs.py`, `timestamps.py` new), `backend/tests/{test_api_input,test_logs,test_schemathesis,test_timestamps}.py` (new), `backend/tests/{test_api,test_contract,test_feeds,test_fetcher,contract}.py`, `backend/scripts/mutants.py`, `backend/pyproject.toml`, `backend/uv.lock`, `backend/.dockerignore`, `api/openapi.yaml`, `backend/src/swipe_rss/api_models.py` (regenerated), `compose.yaml`, `.env.example`, `.github/workflows/ci.yml` (new), `backend/tests/README.md`, `README.md`, `docs/architecture.md`, `PROJECT_PLAN.md`, plan files
+
+### CI fix, test deploy, compose smoke job (2026-10-05)
+
+- **Status:** complete
+- First CI run: backend job failed at "Set up job" (`setup-uv@v10` doesn't exist), docker job green. Pinned `v10.2.0` (`88dc588`); second run: lint, tests (incl. Schemathesis), curated mutants green on GitHub.
+- User asked what the two jobs do and whether backend includes docker (no: the tests call the code directly; Docker only packages it). Gap found: nothing starts the whole system in CI → compose smoke job added (user request), verified locally with the workflow's exact steps in a git worktree.
+- Test deploy (user OK, one-time branch switch by Claude): server on `stage2-contract-tests`, `docker compose up -d --build` fine; read-only checks all as intended (see Test Results).
+- mutmut hung in that CI run (crash on Schemathesis' generated test ids); run cancelled; mutmut now ignores `test_schemathesis.py`. Fresh full run locally: 120 s on 28 cores, score 79%. User decision: mutmut only on pull requests + manual trigger → its own CI job (30-min limit).
+- `.md` recheck before commit: mutmut time limit in three files (15 min step → 30 min job), mutmut runtime (~7 s / ~6 s → ~2 min) in the tests README and `run_mutmut.py`, reboot table, dev-loop diagram gets the CI step (18 diagrams validate). Committed and pushed.
+- Files: `.github/workflows/ci.yml`, `backend/pyproject.toml`, `README.md`, `backend/tests/README.md`, plan files
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -278,6 +322,18 @@
 | Stack after Dockerfile fix | test project + token override | healthy, auth works | `(healthy)`, migrate 0, `/queue` 200 | pass |
 | Redeploy with Dockerfile fix | `git pull && docker compose up -d --build` | healthy, files readable | healthy, `644` in image, `/health` 200, `/queue` 401 | pass |
 | Server deploy (stage 2) | `docker compose up -d` on `phase2` | stack healthy, API over tailnet | as expected after the permission fix; first fetch 20 items, 0 failed | pass |
+| Contract coverage + route equality | `uv run pytest` | all pass, no contract problems | 219 passed, check silent | pass |
+| Contract check sabotage | disable 503 test / add 405 request / partial run | missing / undocumented / silent | as expected, exit 1 / 1 / 0 | pass |
+| Contract curated mutants | `mutants.py contract` | all killed | 3/3 by expected tests | pass |
+| Container smoke (middleware, 413, logs) | compose test project, curl | 401 before body/routing, 413, no health-check lines, rotation | as expected | pass |
+| Schemathesis 50/op | `pytest tests/test_schemathesis.py` | no failures | pass after the fixes | pass |
+| Second CI run (GitHub Actions) | push of `88dc588` | all green | docker ✅; backend: lint ✅, tests ✅, curated mutants ✅; mutmut hung (crash on Schemathesis), run cancelled | partial |
+| Test deploy of the branch | server, `docker compose up -d --build` | healthy, new rules live | api healthy; no token → 401 for `/queue`, unknown path, broken body, DELETE; rotation 10m×3, level INFO; scheduler without token; DB `0003`, 30 items | pass |
+| Compose smoke steps, locally | git worktree, `COMPOSE_PROJECT_NAME=swipe-rss-ci` | as in CI | migrate 0, api healthy, health 200, queue 401/200, feeds 200, no scheduler | pass |
+| First CI run (GitHub Actions) | push of `ebcbb3c` | both jobs green | docker ✅; backend ❌ at "Set up job" (`setup-uv@v10` doesn't exist) | fail |
+| Schemathesis 500/op, 5 runs | `max_examples=500` temporarily | no failures | 5/5 clean after the timestamp range (before: ~1 in 3 runs hit year 0) | pass |
+| Global rules tests | `uv run pytest` | all pass, contract check silent | 255 passed (contract check first flagged the new 422s, then silent) | pass |
+| Global rules mutants | `mutants.py contract api:` | all killed | 8/9, then 9/9 after adding the dependency-parameter test | pass |
 | Extraction sample, one article per feed | `fetch_html` + trafilatura | most extract | 12 ok, Ars ×9 405 (AWS WAF), mekomit 403 | info |
 
 ## Error Log
@@ -298,13 +354,24 @@
 | 2026-10-04 | Server: parallel build failed at "exporting to image" after Docker cleanup | 1 | Error text not captured; build one service, then `up -d` |
 | 2026-10-04 | Server: `migrate` `PermissionError: 'pyproject.toml'` | 1 | Checkout files `600` (umask 077); chmod by user; Dockerfile `COPY --chmod=a+rX` |
 | 2026-10-04 | Server: DB volume deleted in Docker cleanup | 1 | Lost items only (no swipes yet); refetched. My cleanup list should have warned more explicitly |
+| 2026-10-04 | `ModuleNotFoundError: contract` loading `conftest.py` | 1 | pytest 9 doesn't put `tests/` on `sys.path`; `pythonpath = ["tests"]` |
+| 2026-10-04 | `ImportError: get_flat_dependant` (FastAPI 0.142) | 1 | Internal helper renamed; own walk of the dependency tree with public attributes |
+| 2026-10-04 | Curated mutant "token check removed" went STALE | 1 | Its snippet was the `dependencies=[...]` line I changed; snippet updated, KILLED again |
+| 2026-10-05 | Unauthenticated broken body got 422 and was read and logged | 1 | Token check moved to ASGI middleware before routing |
+| 2026-10-05 | Logged validation errors repeated the input per error | 1 | Errors logged as type/loc/msg |
+| 2026-10-05 | Schemathesis integration: `TestClient` has no `adapters`; `Session.request() got 'app'`; DNS lookup of `testserver` | 3 | Schema built in a fixture with the app attached (`schemathesis.pytest.from_fixture`) |
+| 2026-10-05 | My strict validation rejected `180.0`; my error responses crashed on non-UTF-8 bytes | 2 | Found by Schemathesis; integral floats normalized, inputs decoded as text |
+| 2026-10-05 | Spec `pattern` on date-time: generated model raises TypeError for every value | 1 | Verified on a sample spec before touching the real one; option b+ instead |
+| 2026-10-05 | Schemathesis `filter_body`: Hypothesis `filter_too_much` | 1 | `map_body` moving the year into the range |
+| 2026-10-05 | First CI run: `Unable to resolve action astral-sh/setup-uv@v10` (backend job; docker job passed) | 1 | setup-uv publishes no major-only tag; pinned `v10.2.0` |
+| 2026-10-05 | Second CI run: mutmut step hung 22+ min (locally: `INTERNALERROR KeyError` for Schemathesis node ids) | 1 | mutmut ignores `test_schemathesis.py`; run cancelled; mutmut now its own job (PRs + manual, 30-min limit) |
 
 ## 5-Question Reboot Check
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy done; `phase2` merged into `main`; next: server back to `main` (user), then testing-coverage discussion (Key Question 11) |
+| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy done; `phase2` merged into `main`; on branch `stage2-contract-tests`: contract coverage, spec's global rules, token middleware, 413, logging, Schemathesis (5 bugs fixed), timestamp range, CI workflow (`ebcbb3c`, action tag fixed in `88dc588`), test deploy of the branch on the server, compose smoke job, mutmut as a PR/manual job; next: green CI run, PR + merge, server back to `main` |
 | Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |
-| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard; `api` Compose service; first stage 2 deploy (API live over the tailnet) |
+| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard; `api` Compose service; first stage 2 deploy (API live over the tailnet); merge to `main` (PR #1); contract coverage and must-fail tests; Schemathesis; CI workflow |

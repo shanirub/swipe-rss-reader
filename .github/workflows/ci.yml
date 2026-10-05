@@ -1,0 +1,90 @@
+# CI: runs on every push and pull request (decided 2026-10-05). Free for public repositories
+# on GitHub-hosted runners. Nothing here touches the internet beyond installing dependencies:
+# the tests use local servers and fakes only (backend/tests/README.md).
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:  # "Run workflow" button on GitHub, e.g. for a mutmut report without a PR
+
+concurrency:  # a newer push to the same branch cancels the older run
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0  # no major-only tag (v10) is published
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Install (Python version from backend/.python-version, dependencies from uv.lock)
+        run: uv sync --frozen
+      - name: Lint
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: Tests (incl. contract coverage and Schemathesis)
+        run: uv run pytest
+      - name: Curated mutation checks
+        run: uv run python scripts/mutants.py
+
+  mutmut:
+    # Exploration report, not a gate (survivors need human triage). ~10-15 min on a GitHub runner,
+    # so only for pull requests and on demand, not on every push (decided 2026-10-05).
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30  # a hang must never block CI (it once did: mutmut crashed on Schemathesis)
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0  # no major-only tag (v10) is published
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - run: uv sync --frozen
+      - name: mutmut report (always green; read the survivors in the log)
+        run: uv run python scripts/run_mutmut.py
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the backend image
+        run: docker build -t swipe-rss-backend:ci backend
+      - name: The image starts and imports the app
+        run: docker run --rm swipe-rss-backend:ci python -c "import swipe_rss.api, swipe_rss.extraction"
+
+  compose-smoke:
+    # Starts the system the way the server does (docker compose), not just the code: migrate must
+    # finish, the api must become healthy, auth and the mounted feeds.toml must work. The scheduler
+    # is not started: it would fetch real feeds from the internet.
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_PROJECT_NAME: swipe-rss-ci
+    steps:
+      - uses: actions/checkout@v7
+      - name: Start migrate and api, wait until api is healthy
+        run: |
+          echo "SWIPE_RSS_API_TOKEN=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" > .env
+          docker compose up --detach --build --wait --wait-timeout 120 api
+      - name: Check the running system
+        run: |
+          set -eu
+          token=$(cut -d= -f2- .env)
+          status() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+          test "$(docker inspect -f '{{.State.ExitCode}}' swipe-rss-ci-migrate-1)" = 0
+          test "$(status http://127.0.0.1:8001/health)" = 200
+          test "$(status http://127.0.0.1:8001/queue)" = 401
+          test "$(status -H "Authorization: Bearer $token" http://127.0.0.1:8001/queue)" = 200
+          test "$(status -H "Authorization: Bearer $token" http://127.0.0.1:8001/feeds)" = 200
+          echo "migrate exited 0; api healthy; /health 200; /queue 401 without and 200 with token; /feeds 200"
+      - name: Container logs (on failure)
+        if: failure()
+        run: docker compose logs
