@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Stage 5, the Android MVP (design questions first). Open check: the first scheduled backup (19:37 UTC 2026-10-06) runs in the background; its result goes into the next commit.
+Stage 5, the Android MVP, on branch `stage5-android` (design questions first, one at a time).
 
 ## Current Phase
 
-Phase 4 complete (backups deployed at `9d75d91`); next Phase 5 (Android MVP)
+Phase 5 (Android MVP) in progress: design questions; Phases 0–4 complete (server at `9d75d91`)
 
 ## Phases
 
@@ -94,7 +94,7 @@ Phase 4 complete (backups deployed at `9d75d91`); next Phase 5 (Android MVP)
 - [x] Backup design (2026-10-06, user): two layers; layer 1 now (on-server snapshots in `/home/srub/swipe-rss-backups`, outside the repo and every Docker volume), layer 2 (off-server) pinned as the last stage while the user checks Hetzner's options
 - [x] Layer 1, test-first (2026-10-06): `swipe-rss backup` (`VACUUM INTO` + `quick_check`), rotation (48 h hourly + 14 daily midnights), crontab `37 * * * *`, scheduler-only bind mount `/home/srub/swipe-rss-backups`; red against a stub (10/10), green; check queries the copy (version, row counts), test-first; 361 passed; 2 curated mutants killed; mutmut 66/86, all 20 survivors accepted (equivalent SQL case, messages, the accepted backup/rotation cases); container run: wrong owner → fails loudly, right owner → `backup succeeded: … version=… swipes=…`
 - [x] ~~Restore command~~ built test-first, then dropped (2026-10-06, user: too complicated for now): backup = snapshot → check by opening it as a separate database and querying it (version, row counts) → log `backup succeeded`; production only read; restore manual (README); "minimize data loss on restore" in `PROJECT_PLAN.md` §7
-- [x] Merged via PR #5 (`9d75d91`); user created `/home/srub/swipe-rss-backups` (a first attempt with `~` landed elsewhere: the docs should use the absolute path); deployed 2026-10-06 18:42; manual run: `backup succeeded … 180224 bytes … items=116 tombstones=138 swipes=0`; first scheduled run 19:37 checked in the background
+- [x] Merged via PR #5 (`9d75d91`); user created `/home/srub/swipe-rss-backups` (a first attempt with `~` landed elsewhere: the docs should use the absolute path); deployed 2026-10-06 18:42; manual run: `backup succeeded … 180224 bytes … items=116 tombstones=138 swipes=0`; first scheduled run 19:37 UTC succeeded (`items=124 tombstones=146`, rotated out 0)
 - [x] Docs use the absolute backup path `/home/srub/swipe-rss-backups` instead of `~/…` (2026-10-06; `~` depends on who runs the command)
 - [x] Compose review (2026-10-06, user: the file is enough): migrate first (`service_completed_successfully`), `restart: unless-stopped` + Docker at boot, API health check, loopback-only port, `.env` for `api` only, log rotation, data volume + backup mount. Not needed now: resource limits, a scheduler health check
 - [x] ~~Record the backend git commit with each stored swipe~~ moved to `PROJECT_PLAN.md` §7 (2026-10-06, user); deploys keep being noted with date, time and commit
@@ -104,7 +104,7 @@ Phase 4 complete (backups deployed at `9d75d91`); next Phase 5 (Android MVP)
 
 - [ ] kotlinx.serialization sends nulls/defaults (`encodeDefaults = true`), so required-but-nullable fields are never dropped
 - [ ] Swipe sync: single-swipe fallback on `422`; dead-letter store (with `app_version` + error), retry once on new app version, debug screen with retry/export
-- **Status:** pending
+- **Status:** in_progress
 
 ### Phase 6: Read-later view (stage 6)
 
