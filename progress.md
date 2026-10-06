@@ -217,7 +217,7 @@
 ### Phase 2: first stage 2 deploy
 
 - **Status:** complete
-- User cleaned up Docker on the server before deploying; this also deleted the `swipe-rss-reader_data` volume (my cleanup list warned only in general terms). Lost: items/tombstones/feed state since 2026-10-02; no swipes or saves existed (API never deployed).
+- User reset Docker on the server before deploying, deliberately removing the `swipe-rss-reader_data` volume (clarified 2026-10-06: `docker compose up` as root next to containers started as `srub` had caused a permission tangle; wiping was cheaper than untangling). Lost: items/tombstones/feed state since 2026-10-02; no swipes or saves existed (API never deployed).
 - Build after the cleanup failed at "exporting to image" for the three services building the same tag in parallel (error text not captured); `docker compose build migrate` + `up -d` worked. Not reproducible on the desktop.
 - `migrate` then failed: `PermissionError: 'pyproject.toml'`. Cause: checkout files `600` after `git switch` under umask 077; `COPY` keeps file modes; the container user can't read them. Reproduced on the desktop. User chmod-ed the checkout; permanent fix `COPY --chmod=a+rX` in the Dockerfile (tested with owner-only sources).
 - Read-only checks (desktop + server): stack healthy, `0001`→`0003`, `/health` 200, `/queue` 401 without token, `/docs` 404, port bound to `127.0.0.1` only, first fetch 29 feeds / 0 failed / 20 items, extract job succeeds every minute. User verified `/queue` with the token over the tailnet.
@@ -311,6 +311,18 @@
 - `.md` recheck before commit: 18 diagrams render in Mermaid 10/11 (validator recreated in the scratchpad from the findings method); `PROJECT_PLAN.md`: scheduling line (pruning now hourly), data model (`swipes` append-only), the open decision on removed feeds settled by retention (default), `max_item_age_hours` left open for the user; decisions table in `task_plan.md`. Committed, PR opened.
 - Files: `backend/src/swipe_rss/prune.py` (new), `backend/alembic/versions/0004_swipes_append_only.py` (new), `backend/src/swipe_rss/cli.py`, `backend/crontab`, `backend/tests/test_prune.py` (new), `backend/tests/test_migrations.py`, `backend/scripts/mutants.py`, `backend/tests/README.md`, `README.md`, `docs/architecture.md`, `PROJECT_PLAN.md`, plan files
 
+### Stage 4 start: backups, layer 1 (2026-10-06)
+
+- **Status:** complete (not deployed)
+- Phase 3 deploy finished: pruning ran at 15:07 (20 items, = dry run) and 16:07 (2). I had wrongly announced 16:07 as the first run; the new scheduler started at 15:03.
+- Backup discussion: rclone vs restic, Google Drive's OAuth requirements (own client, published app; checked rclone docs), desktop via restic `rest-server` append-only, email, on-server copies. User: on-server copy now, off-server pinned as the last stage (stage 9) while checking Hetzner.
+- User clarified: the 2026-10-04 volume removal was a deliberate reset after a root-vs-`srub` Compose permission tangle, not an accident; all records corrected.
+- `backup.py` test-first (red 10/10 against a stub, then green), CLI `backup`, crontab `37 * * * *`, scheduler-only bind mount, `SWIPE_RSS_BACKUP_DIR` setting, `.env.example`. 360 passed; curated mutants +2 (59), killed; mutmut 56/75, all survivors accepted (table with how common each case is).
+- User asked where the mutant table was (it had been in a mid-turn message) and whether restore was tested (it wasn't; my README restore sentence was also incomplete). Decided: restore as a command (B), test-first. Red 6/6, green; my first draft had a test-dir mistake and two careless lines, fixed. mutmut: 9 restore survivors; 4 of them showed the `--no-safety-copy` WAL cleanup untested → test strengthened → still passed with the cleanup removed → experiment (desktop 3.51.2, image 3.46.1): SQLite discards a stale WAL itself; my earlier hazard claim only holds for a file copied over a database in use (curated mutant +1, killed). End-to-end restore in the container.
+- User: still too complicated (safety copy, damaged-DB flag). New, simple design: snapshot → open it as a separate database and run queries → log success; never touch production. Restore command, its tests, the curated mutant and README steps removed; manual restore in the README; idea "minimize data loss in case a restore is needed" in `PROJECT_PLAN.md` §7 (new section). `verify` now returns version + row counts (test-first: red, green). 361 passed; mutmut on `backup`: 66/86, survivors equivalent (SQL case), noise (messages) or the earlier accepted ones.
+- User asked to remove every leftover of the restore version: none in code/config; stale mutmut numbers in `task_plan.md` fixed. `.md` recheck before commit: `PROJECT_PLAN.md` described the check twice (old `quick_check` sentence removed), README `.env.example` line (backup dir), `findings.md` current state (server at `55eab1e`, prune hourly) and resources (backup module, mount, setting), next step. Diagrams revalidated. Committed, PR opened.
+- Files: `backend/src/swipe_rss/backup.py` (new), `backend/tests/test_backup.py` (new), `backend/src/swipe_rss/{cli,config}.py`, `backend/tests/test_config.py`, `backend/crontab`, `compose.yaml`, `.env.example`, `backend/scripts/mutants.py`, `README.md`, `backend/tests/README.md`, `docs/architecture.md`, `PROJECT_PLAN.md`, plan files
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -383,6 +395,15 @@
 | Retention curated mutants | `mutants.py prune migration` | killed | 3/3 (incl. the existing schema mutant) | pass |
 | mutmut on `prune` | `run_mutmut.py prune` | — | 35/35 killed | pass |
 | Prune smoke on a dev-DB copy | `swipe-rss prune --dry-run`, then `prune` | counts, then deletes; tombstones stay | 58 / 58, tombstones 58 | pass |
+| First real prune on the server | scheduler log since 15:00 | = dry run | 15:07 items=20, 16:07 items=2; 100 items and 122 tombstones left | pass |
+| Backup tests before the code | `pytest tests/test_backup.py` vs. stub | all fail | 10 failed | pass |
+| Backup after implementation | `uv run pytest` | all pass | 360 passed | pass |
+| Backup in the container | `compose run scheduler swipe-rss backup` | wrong owner fails loudly; right owner writes | exit 1 `unable to open database`; 57 KB snapshot | pass |
+| Restore tests before the code (command later dropped) | `pytest tests/test_backup.py` vs. stub | restore tests fail | 6 failed, 10 passed | pass |
+| Backup check with queries | `uv run pytest` | all pass | 361 passed | pass |
+| Backup in the container | `compose run scheduler swipe-rss backup` | success line with counts | `backup succeeded: … version=0004 … swipes=0`, rotated out 0 | pass |
+| Stale WAL after restore into a damaged DB | experiment, SQLite 3.46.1 (image) and 3.51.2 | — | stale WAL discarded by SQLite; rows = snapshot | info |
+| End-to-end restore in the container (command later dropped) | backup → insert → restore | snapshot state back, safety copy kept | 0 → 1 → 0 items; `swipe_rss-before-restore-…` | pass |
 | Extraction sample, one article per feed | `fetch_html` + trafilatura | most extract | 12 ok, Ars ×9 405 (AWS WAF), mekomit 403 | info |
 
 ## Error Log
@@ -402,7 +423,7 @@
 | 2026-10-04 | `invalid project name " swipe-rss-apitest"` | 1 | zsh doesn't word-split `$P="-p name"`; used `COMPOSE_PROJECT_NAME` instead |
 | 2026-10-04 | Server: parallel build failed at "exporting to image" after Docker cleanup | 1 | Error text not captured; build one service, then `up -d` |
 | 2026-10-04 | Server: `migrate` `PermissionError: 'pyproject.toml'` | 1 | Checkout files `600` (umask 077); chmod by user; Dockerfile `COPY --chmod=a+rX` |
-| 2026-10-04 | Server: DB volume deleted in Docker cleanup | 1 | Lost items only (no swipes yet); refetched. My cleanup list should have warned more explicitly |
+| 2026-10-04 | Server: DB volume removed | 1 | Deliberate reset by the user after a root-vs-`srub` Compose permission tangle (clarified 2026-10-06); items only, refetched |
 | 2026-10-04 | `ModuleNotFoundError: contract` loading `conftest.py` | 1 | pytest 9 doesn't put `tests/` on `sys.path`; `pythonpath = ["tests"]` |
 | 2026-10-04 | `ImportError: get_flat_dependant` (FastAPI 0.142) | 1 | Internal helper renamed; own walk of the dependency tree with public attributes |
 | 2026-10-04 | Curated mutant "token check removed" went STALE | 1 | Its snippet was the `dependencies=[...]` line I changed; snippet updated, KILLED again |

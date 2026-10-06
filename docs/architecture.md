@@ -34,7 +34,8 @@ flowchart LR
         serve["Tailscale Serve :8443<br/>HTTPS, MagicDNS certificate"]
         api["api container<br/>uvicorn + FastAPI on 127.0.0.1:8001"]
         db[("SQLite in named volume<br/>/data/swipe_rss.db")]
-        sched["scheduler container<br/>supercronic: fetch every 15 min,<br/>extract every minute, prune hourly"]
+        sched["scheduler container<br/>supercronic: fetch every 15 min,<br/>extract every minute, prune + backup hourly"]
+        bak[/"~/swipe-rss-backups<br/>host directory, outside the volume"/]
         cfg[/"config/feeds.toml<br/>read-only bind mount"/]
     end
 
@@ -43,6 +44,7 @@ flowchart LR
     serve -- "HTTP, loopback only" --> api
     api -- "read / write" --> db
     sched -- "write items" --> db
+    sched -- "hourly snapshot (VACUUM INTO)" --> bak
     sched -- "re-read every run" --> cfg
     api -- "re-read per GET /feeds" --> cfg
     sched -- "feeds: conditional GET<br/>articles: via SSRF guard" --> feeds
@@ -55,7 +57,8 @@ Arrows point from a module to the modules it imports. `api_models.py` is generat
 ```mermaid
 flowchart TD
     spec[/"api/openapi.yaml<br/>(hand-written contract)"/]
-    cli["cli.py<br/>swipe-rss fetch, extract, prune"]
+    cli["cli.py<br/>swipe-rss fetch, extract, prune, backup"]
+    backup["backup.py<br/>snapshots, check, rotation"]
     prune["prune.py<br/>retention job"]
     fetcher["fetcher.py<br/>fetch run"]
     feeds["feeds.py<br/>feeds.toml loader"]
@@ -77,7 +80,7 @@ flowchart TD
     alembic["alembic/<br/>migrations"]
 
     spec -. "datamodel-codegen" .-> api_models
-    cli --> config & db & feeds & fetcher & extraction & prune & logs
+    cli --> config & db & feeds & fetcher & extraction & prune & backup & logs
     prune --> models
     extraction --> safe & models & text
     safe --> fetcher

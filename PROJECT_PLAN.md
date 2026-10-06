@@ -108,7 +108,7 @@ All networking happens over **Tailscale** (WireGuard-based private mesh VPN). No
 - **TOML**, read with stdlib `tomllib`, validated with Pydantic.
 - Each feed has a **required, stable `id` slug** (never changes; at most 100 characters, the API's `FeedId` limit), plus `url` and optional `name`. The `id` (not the URL) keys `feed_status` and is the feed identifier stored in the swipe log, so a feed's URL can change without orphaning its history.
 - `[defaults]` table for global settings; per-feed overrides (e.g., `retention_hours`) live on the feed entry later.
-- **`max_item_age_hours`** (in `[defaults]`, currently 24): the fetcher skips entries published longer ago than this; entries without a date use fetch time. Not tombstoned. Introduced to keep the initial backlog out; revisit with retention (stage 3).
+- **`max_item_age_hours`** (in `[defaults]`, currently 24): the fetcher skips entries published longer ago than this; entries without a date use fetch time. Not tombstoned. Introduced to keep the initial backlog out; **kept at 24 after the retention review** (2026-10-06, user). Known trade-off: after a fetch outage longer than 24 h, articles published during it are skipped for good.
 - **Invalid file → the fetch run aborts and logs a clear error.** A typo must never be interpreted as "all feeds removed".
 - Initial feed list: converted from the owner's Markdown list (`tech_privacy_rss_feeds.md`).
 
@@ -215,7 +215,10 @@ Rule: **item properties are captured at swipe time** (items are pruned, so anyth
 
 ### Backups
 
-- **rclone** (optionally with **restic**) to **Google Drive**, **encrypted** before upload.
+Two layers (decided 2026-10-06):
+
+- **Layer 1, on the server (stage 4):** `swipe-rss backup`, hourly at minute 37 in the scheduler container, writes a consistent snapshot of the database (`VACUUM INTO`; never a plain copy of the live WAL database) into **`~/swipe-rss-backups` on the host**: outside the repo and outside every Docker volume, so `docker compose down -v` or a volume prune (as in the deliberate reset of 2026-10-04) can't take it along. Rotation: every snapshot of the last 48 hours, plus the midnight snapshot of each day for 14 days. Covers bugs, bad migrations and volume loss; **not** server loss, server compromise or an account problem. Each snapshot is **checked by opening it as a separate, read-only database and querying it** (integrity check, migration version, row count of every table); the log line `backup succeeded: …` carries the counts; production is only read, by the backup itself. **Restore is manual** (README; decided 2026-10-06, user: keep it simple; losing up to an hour of swipes on a restore is acceptable for now).
+- **Layer 2, off the server (pinned, last stage):** destination open; the owner is checking Hetzner's options (Cloud Backups, Storage Box). Considered so far: Google Drive via restic + rclone (needs an own Google OAuth client, published, since the shared rclone client is being retired in 2026 and test-mode grants expire weekly); the owner's desktop via restic `rest-server` in append-only mode over the tailnet (desktop must be on; a compromised server can't delete backups); email (rejected: whole-account SMTP credentials on the server, 25 MB limit, manual retention). Tool leaning: restic (snapshots, retention, `restic check`).
 
 ### ML ranking (later stage)
 
@@ -264,11 +267,12 @@ Stages are **vertical slices**: each stage adds the tables it needs via a new Al
 1. **Ingest:** SQLite settings, Alembic baseline, `feed_status` / `items` / `tombstones` tables. Fetcher: feeds file → fetch (conditional GET) → parse → deduplicate (incl. tombstones) → store. Run by the scheduler container. Testable by running a fetch and inspecting the DB with `sqlite3`.
 2. **API:** OpenAPI contract first, then `swipes` / `saved` tables (new migration) and endpoints for: swipe queue, recording swipes, saved list, extracted content, per-feed status. Includes the `api` Compose service (published on `127.0.0.1:8001`) so the stage is testable with `curl` over the tailnet; stage 4 completes the rest of the Compose setup.
 3. **Retention:** pruning job (unswiped and swiped items, saved items; tombstones are kept). Comes after the API because its rules depend on swipe and save state.
-4. **Deployment & backups:** full Compose setup, encrypted rclone backup to Google Drive.
+4. **Deployment & on-server backups:** full Compose setup, hourly snapshots outside the Docker volume (layer 1, see Backups).
 5. **Android MVP:** swipe cards against the API, Room cache, offline swipe queue with WorkManager sync (single-swipe fallback on `422`, dead-letter store with retry on app update, debug screen with retry/export), feed-status screen.
 6. **Read-later view:** saved list, extracted-content reader, Custom Tabs fallback, permanent log of reads.
 7. **Ranking:** TF-IDF + logistic regression on the swipe log, queue ordering by predicted interest, exploration slice.
 8. **Iterate:** embeddings, per-feed retention tuning, undo, UX polish; lenient dead-letter upload if needed.
+9. **Off-server backups** (pinned 2026-10-06, layer 2, see Backups): destination to be decided after the owner checks Hetzner's options.
 
 ---
 
@@ -278,7 +282,15 @@ All decisions needed before stages 0–2 are resolved. Remaining items can wait 
 
 - Behavior of a saved item after it is read (remove vs. move to a read history). *(stage 6; a nullable `read_at` column keeps both options open cheaply)*
   - Either way, **opening a saved item is logged as a permanent, append-only event** (it is a training signal: saved-but-never-read is a weaker positive), not only as `saved.read_at`, which disappears when `saved` rows are pruned after two weeks. *(stage 6)*
-- Backup method and policy: snapshot via `sqlite3 .backup` or `VACUUM INTO` before upload (never copy the live WAL database file); frequency and retention. *(stage 4)*
+- Off-server backup destination and tool (layer 2). *(stage 9; owner checking Hetzner's options)*
 - Whether "read now" is weighted as a stronger positive than "save". *(stage 7; actions are logged distinctly, so this is a training-time choice)*
 - ML retraining cadence (e.g., nightly vs. after N new swipes). *(stage 7)*
 - Per-feed retention overrides (values and when). *(stage 8; `feeds.toml` already has room for them)*
+
+---
+
+## 7. Ideas for after the initial project
+
+Not part of any stage; to look at once stages 0–9 are done.
+
+- **See how to minimize data loss in case a restore is needed** (2026-10-06, user). Today a restore is manual and loses everything written after the snapshot (at most an hour). Ideas discussed: a restore command, a safety copy of the current state before restoring, more frequent snapshots.

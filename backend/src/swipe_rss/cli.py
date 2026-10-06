@@ -1,10 +1,11 @@
-"""Command-line entry point: `swipe-rss fetch`, `swipe-rss extract`, `swipe-rss prune`."""
+"""Command-line entry point: `swipe-rss fetch`, `swipe-rss extract`, `swipe-rss prune`, `swipe-rss backup`."""
 
 import argparse
 import asyncio
 import logging
 from datetime import UTC, datetime
 
+from swipe_rss.backup import BackupError, backup, rotate, verify
 from swipe_rss.config import get_settings
 from swipe_rss.db import make_engine
 from swipe_rss.extraction import run_extraction
@@ -23,6 +24,7 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("extract", help="extract the text of due saved articles")
     prune_cmd = commands.add_parser("prune", help="delete expired items and saved entries (never swipes)")
     prune_cmd.add_argument("--dry-run", action="store_true", help="only count what would be deleted")
+    commands.add_parser("backup", help="snapshot the database into the backup directory and rotate old snapshots")
     args = parser.parse_args(argv)
 
     settings = get_settings()
@@ -51,5 +53,18 @@ def main(argv: list[str] | None = None) -> int:
         log.info(
             "prune run done%s: items=%d saved=%d",
             " (dry run, nothing deleted)" if args.dry_run else "", result.items, result.saved,
+        )  # fmt: skip
+    elif args.command == "backup":
+        now = datetime.now(UTC)
+        try:
+            target = backup(settings.db_path, settings.backup_dir, now)
+        except BackupError as e:
+            log.error("backup failed: %s", e)
+            return 1
+        report = verify(target)  # read-only queries on the snapshot, for the log line
+        deleted = rotate(settings.backup_dir, now)
+        log.info(
+            "backup succeeded: %s (%d bytes) %s, rotated out %d",
+            target.name, target.stat().st_size, " ".join(f"{k}={v}" for k, v in report.items()), len(deleted),
         )  # fmt: skip
     return 0

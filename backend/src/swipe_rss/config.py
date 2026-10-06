@@ -13,6 +13,7 @@ class Settings:
     feeds_path: Path
     api_token: str | None  # bearer token for the API; the API refuses to start without it
     log_level: str = "INFO"  # DEBUG, INFO, WARNING, ERROR; applies to the jobs and the API
+    backup_dir: Path | None = None  # on-server snapshots (layer 1); outside every Docker volume in production
 
 
 def get_settings() -> Settings:
@@ -21,4 +22,5 @@ def get_settings() -> Settings:
         feeds_path=Path(os.environ.get("SWIPE_RSS_FEEDS", _REPO_ROOT / "config" / "feeds.toml")),
         api_token=os.environ.get("SWIPE_RSS_API_TOKEN") or None,
         log_level=os.environ.get("SWIPE_RSS_LOG_LEVEL", "INFO").upper(),
+        backup_dir=Path(os.environ.get("SWIPE_RSS_BACKUP_DIR", _REPO_ROOT / "backend" / "data" / "backups")),
     )

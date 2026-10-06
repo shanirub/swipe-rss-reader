@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Phase 3 pruning job built and tested (branch `stage3-retention`, uncommitted): `.md` recheck, commit, PR, merge; then deploy with a dry run first (`docker compose run --rm scheduler swipe-rss prune --dry-run`), with user approval. Server still runs `7531460` (PR #3 changed only tests/docs).
+Stage 4 layer 1 (on-server backups) done on branch `stage4-backups`: commit, PR, merge; then the user creates `~/swipe-rss-backups` (owned by uid 10001), deploy, check the first `:37` snapshot. Then the rest of stage 4: Compose review, `backend_commit`.
 
 ## Current Phase
 
-Phase 3 (in progress: retention designed and built test-first, not yet deployed; Phase 2 complete 2026-10-06, PR #3 merged as `977c094`)
+Phase 4 (in progress: on-server backups; Phase 3 deployed 2026-10-06 at `55eab1e`, pruning verified on the server)
 
 ## Phases
 
@@ -51,7 +51,7 @@ Phase 3 (in progress: retention designed and built test-first, not yet deployed;
 - [x] `swipes` / `saved` migration (`0003`), incl. `items.swiped_at` (2026-10-03)
 - [x] FastAPI app skeleton (2026-10-03): `fastapi`/`uvicorn` deps (`trafilatura` deferred to the extraction job); `api.create_app` factory; FastAPI's `/docs`, `/redoc`, `/openapi.json` off; `GET /health`; `.env.example`
 - [x] Bearer token auth (2026-10-03): app-level dependency + `PUBLIC_PATHS` allowlist, constant-time compare, fails closed without a ≥32-char token
-- [x] Mutation checks as a script (2026-10-03): `backend/scripts/mutants.py`, curated mutants (57 by 2026-10-06), all killed; documented in `backend/tests/README.md`
+- [x] Mutation checks as a script (2026-10-03): `backend/scripts/mutants.py`, curated mutants (59 by 2026-10-06), all killed; documented in `backend/tests/README.md`
 - [x] mutmut adopted as an exploration tool (2026-10-03): `backend/scripts/run_mutmut.py`, config in `pyproject.toml`; gaps it found closed with tests (empty query params, golden dedup keys, redirects, User-Agent, missing author, updated-only date, truncation whitespace)
 - [x] Contract coverage, input hardening, Schemathesis, CI; merged via PR #2 (2026-10-05, `7531460`), server back on `main`
 - [x] Triage the remaining mutmut survivors by impact before finishing stage 2 (2026-10-05/06, policy in findings.md): 347 survivors at the start (79%); `models`, `feeds`, `text` accepted; `fetcher` 10 tests; `api`, `config`, `logs`, `timestamps` 7 tests; everything else accepted with a reason per category. Modules triaged 2026-10-04 (`queue`, `swipes`, `saved`, `feed_health`, `safe_fetch`, `extraction`) unchanged since
@@ -61,7 +61,7 @@ Phase 3 (in progress: retention designed and built test-first, not yet deployed;
 - [x] Read endpoints (2026-10-04): `GET /feeds` (`feed_health.py`, 503 on invalid `feeds.toml`), `GET /saved` + `GET /saved/{feed_id}/{item_key}/content` (`saved.py`); path params validated with patterns from the generated `Card`; smoke-tested
 - [x] Extraction job + SSRF guard (2026-10-04): `safe_fetch.py` (connect-time IP check, pinned connection, manual redirects, limits), `extraction.py` (claim + lease, backoff 5/30 min, permanent vs temporary), `swipe-rss extract` every minute; `trafilatura` added; tested on real articles (Ars Technica: AWS WAF captcha → always `failed`, see findings)
 - [x] `api` Compose service (2026-10-04): uvicorn on `127.0.0.1:8001`, health check, only `api` gets `.env` (optional for Compose); tested locally: no token → only `api` fails; with token → healthy, 401/200, loopback-only bind, scheduler can't see the token
-- [x] First stage 2 deploy (2026-10-04): server on `phase2`, `.env` by the user; stack healthy, migrations `0001`→`0003` on a fresh DB (old volume lost in a Docker cleanup, no swipes existed), first fetch 29 feeds / 0 failed / 20 items, `/queue` with token over the tailnet OK
+- [x] First stage 2 deploy (2026-10-04): server on `phase2`, `.env` by the user; stack healthy, migrations `0001`→`0003` on a fresh DB (old volume removed in a deliberate reset by the user after a root-vs-`srub` Compose permission tangle; no swipes existed), first fetch 29 feeds / 0 failed / 20 items, `/queue` with token over the tailnet OK
 - [x] Dockerfile: `COPY --chmod=a+rX` so the image doesn't inherit the checkout's file modes (deploy broke on files checked out under umask 077); tested with owner-only sources; redeployed 2026-10-04 (`28c1ce8`), files `644` in the image
 - [x] Merge `phase2` into `main` via PR (2026-10-04, merge commit; deployed code = `main`). Open stage 2 items continue on a new branch
 - [x] Contract coverage (2026-10-04, branch `stage2-contract-tests`): `tests/contract.py` + hooks in `conftest.py` (records every test-client response; after a full green run, recorded set must equal the spec's documented responses), `tests/test_contract.py` (route-set equality, matcher, recorder); 3 curated mutants; all documented responses were already covered
@@ -85,15 +85,19 @@ Phase 3 (in progress: retention designed and built test-first, not yet deployed;
 - [x] Swipe safety, all three layers (2026-10-06, user): trigger in migration `0004` (no DELETE/UPDATE on `swipes`), survival test, curated mutant
 - [x] Tombstones kept forever (2026-10-06, user: option B; ~3 MB/year)
 - [x] Pruning job, test-first (2026-10-06): tests first (red against a do-nothing stub: 10 failures), then migration `0004` (append-only triggers on `swipes`), `prune.py`, `swipe-rss prune [--dry-run]`, crontab `7 * * * *` (green); 2 curated mutants killed; mutmut on `prune`: 35/35 killed (100%); smoke on a dev-DB copy: dry run 58 counted, real run 58 deleted, tombstones kept
-- [ ] Commit, PR, merge; deploy (first prune on the server: dry run first)
-- **Status:** in_progress
+- [x] `max_item_age_hours` stays 24 (2026-10-06, user; trade-off: a fetch outage > 24 h skips the articles published during it)
+- [x] Merged via PR #4 (`55eab1e`); deployed 2026-10-06: dry run 20 items (independent query: 20), `up -d` at 15:03, healthy; first real run 15:07 UTC deleted 20 (= dry run), 16:07 deleted 2 (aged out in that hour); 100 items and 122 tombstones left
+- **Status:** complete
 
-### Phase 4: Deployment & backups (stage 4)
+### Phase 4: Deployment & on-server backups (stage 4)
 
-- [ ] Full Compose setup
+- [x] Backup design (2026-10-06, user): two layers; layer 1 now (on-server snapshots in `~/swipe-rss-backups`, outside the repo and every Docker volume), layer 2 (off-server) pinned as the last stage while the user checks Hetzner's options
+- [x] Layer 1, test-first (2026-10-06): `swipe-rss backup` (`VACUUM INTO` + `quick_check`), rotation (48 h hourly + 14 daily midnights), crontab `37 * * * *`, scheduler-only bind mount `~/swipe-rss-backups`; red against a stub (10/10), green; check queries the copy (version, row counts), test-first; 361 passed; 2 curated mutants killed; mutmut 66/86, all 20 survivors accepted (equivalent SQL case, messages, the accepted backup/rotation cases); container run: wrong owner → fails loudly, right owner → `backup succeeded: … version=… swipes=…`
+- [x] ~~Restore command~~ built test-first, then dropped (2026-10-06, user: too complicated for now): backup = snapshot → check by opening it as a separate database and querying it (version, row counts) → log `backup succeeded`; production only read; restore manual (README); "minimize data loss on restore" in `PROJECT_PLAN.md` §7
+- [ ] Commit, PR, merge; user creates `~/swipe-rss-backups` (`sudo install -d -o 10001 -g 10001 ~/swipe-rss-backups`); deploy; check the first :37 snapshot
+- [ ] Full Compose setup (review what is still missing)
 - [ ] Record the backend git commit with each stored swipe (`swipes.backend_commit`, nullable; earlier rows NULL). Commit captured at build time; preferred: a `deploy.sh` that computes `git rev-parse HEAD` and passes it as a build arg (alternatives: bare build arg in the deploy command; BuildKit additional context reading `.git`). API logs its commit at startup; local dev stores NULL. Changes the deploy rule to `git pull && ./deploy.sh` (user to confirm then). Parked 2026-10-04.
-- [ ] Encrypted rclone backup to Google Drive
-- **Status:** pending
+- **Status:** in_progress
 
 ### Phase 5: Android MVP (stage 5)
 
@@ -113,6 +117,12 @@ Phase 3 (in progress: retention designed and built test-first, not yet deployed;
 ### Phase 8: Iterate (stage 8)
 
 - [ ] Lenient `POST /dead-letters` + import command, only if dead letters occur
+- **Status:** pending
+
+### Phase 9: Off-server backups (stage 9, pinned 2026-10-06)
+
+- [ ] Destination: user checks Hetzner (Cloud Backups, Storage Box); alternatives considered in `PROJECT_PLAN.md` §3 Backups (Google Drive via restic + rclone with an own published OAuth client; desktop via restic `rest-server` append-only; email rejected)
+- [ ] Tool (leaning restic), encryption passphrase stored off-server, retention, restore test, failure alert
 - **Status:** pending
 
 ## Key Questions
@@ -210,6 +220,7 @@ Phase 3 (in progress: retention designed and built test-first, not yet deployed;
 | Retention (2026-10-06, user: whatever keeps data longest): items 2 days from `fetched_at`, swiped or not; saved 2 weeks from the save's `received_at`, read or not; tombstones and swipes forever | One rule per table; undo stays possible until expiry; tombstones ≈ 3 MB/year; server clock for saves |
 | Pruning job hourly at :07, one transaction, no VACUUM, `--dry-run`, built test-first (2026-10-06, user) | ~3 rows per run; freed pages are reused; look before the first real delete |
 | `swipes` append-only by triggers (migration `0004`) + survival test + curated mutant (2026-10-06, user) | The training data can't be refetched; the trigger also covers code and manual sessions outside our tests. A table rebuild drops triggers, so the tests check them at head |
+| Backups in two layers (2026-10-06, user): on-server snapshots now, off-server pinned as stage 9 | Layer 1 covers bugs, bad migrations and volume loss at no cost; the off-server destination waits for the user's look at Hetzner's options |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 
 ## Errors Encountered
@@ -228,7 +239,7 @@ Phase 3 (in progress: retention designed and built test-first, not yet deployed;
 | `invalid project name " swipe-rss-apitest"` (2026-10-04) | 1 | zsh doesn't word-split `$P="-p name"`; used `COMPOSE_PROJECT_NAME` |
 | Server: parallel image build failed at "exporting to image" after a full Docker cleanup (2026-10-04) | 1 | Actual error not captured; worked around with `docker compose build migrate` then `up -d`; not reproducible on the desktop, warm-cache parallel builds work on the server |
 | Server: `migrate` exit 1, `PermissionError: 'pyproject.toml'` (2026-10-04) | 1 | Checkout files were `600` (umask 077 during `git switch`); `COPY` keeps modes and the app user can't read root-owned `600` files. User chmod-ed the checkout; Dockerfile now `COPY --chmod=a+rX` |
-| Server: DB volume deleted during Docker cleanup (2026-10-04) | 1 | Not recoverable (snapshot was in the same volume); no swipes existed, items refetched. Backups are stage 4 |
+| Server: DB volume removed (2026-10-04) | 1 | Deliberate reset by the user (clarified 2026-10-06): `docker compose up` as root next to `srub`'s containers caused a permission tangle; wiping was cheaper. No swipes existed, items refetched. Lesson: Compose on the server only as `srub` |
 | `ModuleNotFoundError: contract` loading `conftest.py` (2026-10-04) | 1 | pytest 9 doesn't put `tests/` on `sys.path`; `pythonpath = ["tests"]` |
 | `ImportError: get_flat_dependant` (FastAPI 0.142, 2026-10-04) | 1 | Internal helper renamed; own walk of the dependency tree with public attributes |
 | CI: mutmut step hung 22+ min; locally `INTERNALERROR KeyError` on Schemathesis node ids (2026-10-05) | 1 | mutmut ignores `test_schemathesis.py`; hung run cancelled; mutmut now its own CI job (PRs + manual, 30-min limit) |
