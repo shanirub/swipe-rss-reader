@@ -57,3 +57,13 @@ def test_health_filter_is_installed_once():
     configure_logging("INFO")
     access = logging.getLogger("uvicorn.access")
     assert sum(isinstance(f, SkipHealthChecks) for f in access.filters) == 1
+
+
+def test_health_filter_is_on_uvicorns_access_logger():
+    # Earlier tests may already have installed it; start from a logger without the filter.
+    access = logging.getLogger("uvicorn.access")
+    for f in [f for f in access.filters if isinstance(f, SkipHealthChecks)]:
+        access.removeFilter(f)
+    configure_logging("INFO")
+    assert not access.filter(access_record("/health"))
+    assert access.filter(access_record("/queue"))

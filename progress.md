@@ -272,6 +272,35 @@
 - `.md` recheck before commit: mutmut time limit in three files (15 min step → 30 min job), mutmut runtime (~7 s / ~6 s → ~2 min) in the tests README and `run_mutmut.py`, reboot table, dev-loop diagram gets the CI step (18 diagrams validate). Committed and pushed.
 - Files: `.github/workflows/ci.yml`, `backend/pyproject.toml`, `README.md`, `backend/tests/README.md`, plan files
 
+### Merge PR #2, server back to `main`, triage policy, READMEs (2026-10-05)
+
+- **Status:** complete (the triage itself continues)
+- CI on `3ecb748` green (backend, docker, compose-smoke). PR #2 opened; all checks green incl. the first CI mutmut run (10m57s); merged as `7531460` (merge commit, user request).
+- Server switched back to `main` (user OK): it was on `88dc588`, the diff to `main` was CI/docs/mutmut config only; `docker compose up -d --build`, no volume touched. api healthy, migrate exit 0, scheduler up, `/health` 200 over the tailnet, `/queue` 401 without token.
+- New branch `stage2-mutmut-triage`. Current local run: 347 survivors (more than the plan's 147: `ebcbb3c` grew `api`, and `config`/`logs`/`timestamps` are new).
+- User questioned whether triaging cosmetic survivors (e.g. `text.py` spacing) is worth hours → triage policy by impact (findings.md, Technical Decisions). `models`, `feeds`, `text` all accepted (user decision); checked that no installed package replaces `text.py` and that `feedparser` already sanitizes summaries.
+- README rewrite (user request): researched conventions (Google, Microsoft and GitLab style guides on tables vs lists, Diátaxis on reference docs, makeareadme.com, GitHub docs). `backend/tests/README.md`: paragraph-long table cells split into short tables plus per-file bullet lists grouped by area; CI jobs, global rules and mutant verdicts as tables; stale "no tests: `config.py`" fixed; triage policy linked. Root `README.md`: prerequisites, setup and deploy steps, shorter command blocks. Short table of contents in the tests README only (user agreed). Reviewed by the user.
+- `.md` recheck before commit: `PROJECT_PLAN.md` (auth described as an app-level dependency, but it's middleware since 2026-10-05; "test strategy settled later" → tests README), `findings.md` current state (date, PR #2 contents), README conventions added to `task_plan.md` decisions, this entry's status, reboot table. Diagrams unaffected (no code change). Committed together with the triage bookkeeping (shared plan files).
+- Files: plan files, `README.md`, `backend/tests/README.md`
+
+### Triage: `fetcher` (2026-10-05)
+
+- **Status:** complete
+- 101 survivors sorted by the impact policy; uncertain ones checked against feedparser/httpx first (findings.md). User approved all proposed tests incl. the three borderline ones (Last-Modified, feed status, timeout).
+- 10 tests in `test_fetcher.py`; suite 326 passed, lint clean. mutmut rerun on `fetcher`: every targeted mutant killed; 60 survivors left, all in accepted categories (7 of them log-format mutants that flipped from killed to survived).
+- Files: `backend/tests/test_fetcher.py`, `backend/tests/README.md`, plan files
+
+## Session: 2026-10-06
+
+### Triage: `api`, `config`, `logs`, `timestamps`
+
+- **Status:** complete
+- User asked about TDD vs mutation testing, and how uvicorn vs TestClient deliver request bodies; measured both (findings.md). User rule from now on: state for each surviving mutant how common its case is (memory).
+- 7 tests (A–G, user approved all): `test_api_input.py` (charset, multi-message body, many small messages → 413, well-formed 401/413, dead-letter log on two more paths), `test_config.py` (new), `test_logs.py`. Suite 335 passed, lint clean.
+- mutmut on the four modules: all 32 targeted mutants killed, no new survivors; 120 accepted. Previously triaged modules unchanged since 2026-10-04 → triage complete.
+- Files: `backend/tests/{test_api_input,test_logs}.py`, `backend/tests/test_config.py` (new), `backend/tests/README.md`, plan files
+- `.md` recheck before commit: triage checkbox in `task_plan.md` rewritten (run-on wording); `PROJECT_PLAN.md`, root `README.md`, diagrams unaffected (no code change). Committed with the `fetcher` triage (one topic: the triage), PR opened.
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -334,6 +363,11 @@
 | Schemathesis 500/op, 5 runs | `max_examples=500` temporarily | no failures | 5/5 clean after the timestamp range (before: ~1 in 3 runs hit year 0) | pass |
 | Global rules tests | `uv run pytest` | all pass, contract check silent | 255 passed (contract check first flagged the new 422s, then silent) | pass |
 | Global rules mutants | `mutants.py contract api:` | all killed | 8/9, then 9/9 after adding the dependency-parameter test | pass |
+| Fetcher triage tests | `uv run pytest` | all pass | 326 passed | pass |
+| mutmut on `fetcher` after triage | `scripts/run_mutmut.py fetcher` | targeted mutants killed | all killed; 60 survivors, all accepted categories | pass |
+| Triage tests (api, config, logs) | `uv run pytest` | all pass | 335 passed | pass |
+| mutmut on api/config/logs/timestamps after triage | `scripts/run_mutmut.py api config logs timestamps` | 32 targeted mutants killed | all killed, no new survivors; 113 survived + 7 timeouts, all accepted | pass |
+| TestClient vs uvicorn body delivery | probe ASGI app, 5 × 30-byte chunked body | — | TestClient: 1 message; uvicorn: 90+30+30, or 5 × 30 with delays | info |
 | Extraction sample, one article per feed | `fetch_html` + trafilatura | most extract | 12 ok, Ars ×9 405 (AWS WAF), mekomit 403 | info |
 
 ## Error Log
@@ -370,8 +404,8 @@
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy done; `phase2` merged into `main`; on branch `stage2-contract-tests`: contract coverage, spec's global rules, token middleware, 413, logging, Schemathesis (5 bugs fixed), timestamp range, CI workflow (`ebcbb3c`, action tag fixed in `88dc588`), test deploy of the branch on the server, compose smoke job, mutmut as a PR/manual job; next: green CI run, PR + merge, server back to `main` |
+| Where am I? | Phases 0–1 complete; Phase 2: design, `api/openapi.yaml`, generated models done on branch `phase2`; fetcher ingest caps, migration `0003`, API skeleton + auth, mutation testing (curated script + mutmut), `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy done; `phase2` merged into `main`; on branch `stage2-contract-tests`: contract coverage, spec's global rules, token middleware, 413, logging, Schemathesis (5 bugs fixed), timestamp range, CI workflow (`ebcbb3c`, action tag fixed in `88dc588`), test deploy of the branch on the server, compose smoke job, mutmut as a PR/manual job; PR #2 merged (`7531460`), server back on `main`; on branch `stage2-mutmut-triage`: survivor triage by impact (`models`, `feeds`, `text` accepted, `fetcher`, `api`, `config`, `logs`, `timestamps` done: triage complete; next PR + merge, then Phase 3) |
 | Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |
-| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard; `api` Compose service; first stage 2 deploy (API live over the tailnet); merge to `main` (PR #1); contract coverage and must-fail tests; Schemathesis; CI workflow |
+| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard; `api` Compose service; first stage 2 deploy (API live over the tailnet); merge to `main` (PR #1); contract coverage and must-fail tests; Schemathesis; CI workflow; PR #2 merged; triage policy; README rewrite |
