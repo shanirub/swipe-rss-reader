@@ -38,7 +38,7 @@ services:
     # Own list: a merge key replaces lists instead of extending them. Only the scheduler gets the
     # backup directory: a host directory outside the repo and outside every Docker volume, so
     # `docker compose down -v` or a volume prune can't delete the backups (PROJECT_PLAN.md §3 Backups).
-    # Create it once, owned by the container user: sudo install -d -o 10001 -g 10001 ~/swipe-rss-backups
+    # Create it once, owned by the container user: sudo install -d -o 10001 -g 10001 /home/srub/swipe-rss-backups
     volumes:
       - data:/data
       - ./config:/config:ro

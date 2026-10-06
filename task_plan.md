@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Stage 4 layer 1 (on-server backups) done on branch `stage4-backups`: commit, PR, merge; then the user creates `~/swipe-rss-backups` (owned by uid 10001), deploy, check the first `:37` snapshot. Then the rest of stage 4: Compose review, `backend_commit`.
+Stage 5, the Android MVP (design questions first). Open check: the first scheduled backup (19:37 UTC 2026-10-06) runs in the background; its result goes into the next commit.
 
 ## Current Phase
 
-Phase 4 (in progress: on-server backups; Phase 3 deployed 2026-10-06 at `55eab1e`, pruning verified on the server)
+Phase 4 complete (backups deployed at `9d75d91`); next Phase 5 (Android MVP)
 
 ## Phases
 
@@ -91,13 +91,14 @@ Phase 4 (in progress: on-server backups; Phase 3 deployed 2026-10-06 at `55eab1e
 
 ### Phase 4: Deployment & on-server backups (stage 4)
 
-- [x] Backup design (2026-10-06, user): two layers; layer 1 now (on-server snapshots in `~/swipe-rss-backups`, outside the repo and every Docker volume), layer 2 (off-server) pinned as the last stage while the user checks Hetzner's options
-- [x] Layer 1, test-first (2026-10-06): `swipe-rss backup` (`VACUUM INTO` + `quick_check`), rotation (48 h hourly + 14 daily midnights), crontab `37 * * * *`, scheduler-only bind mount `~/swipe-rss-backups`; red against a stub (10/10), green; check queries the copy (version, row counts), test-first; 361 passed; 2 curated mutants killed; mutmut 66/86, all 20 survivors accepted (equivalent SQL case, messages, the accepted backup/rotation cases); container run: wrong owner → fails loudly, right owner → `backup succeeded: … version=… swipes=…`
+- [x] Backup design (2026-10-06, user): two layers; layer 1 now (on-server snapshots in `/home/srub/swipe-rss-backups`, outside the repo and every Docker volume), layer 2 (off-server) pinned as the last stage while the user checks Hetzner's options
+- [x] Layer 1, test-first (2026-10-06): `swipe-rss backup` (`VACUUM INTO` + `quick_check`), rotation (48 h hourly + 14 daily midnights), crontab `37 * * * *`, scheduler-only bind mount `/home/srub/swipe-rss-backups`; red against a stub (10/10), green; check queries the copy (version, row counts), test-first; 361 passed; 2 curated mutants killed; mutmut 66/86, all 20 survivors accepted (equivalent SQL case, messages, the accepted backup/rotation cases); container run: wrong owner → fails loudly, right owner → `backup succeeded: … version=… swipes=…`
 - [x] ~~Restore command~~ built test-first, then dropped (2026-10-06, user: too complicated for now): backup = snapshot → check by opening it as a separate database and querying it (version, row counts) → log `backup succeeded`; production only read; restore manual (README); "minimize data loss on restore" in `PROJECT_PLAN.md` §7
-- [ ] Commit, PR, merge; user creates `~/swipe-rss-backups` (`sudo install -d -o 10001 -g 10001 ~/swipe-rss-backups`); deploy; check the first :37 snapshot
-- [ ] Full Compose setup (review what is still missing)
-- [ ] Record the backend git commit with each stored swipe (`swipes.backend_commit`, nullable; earlier rows NULL). Commit captured at build time; preferred: a `deploy.sh` that computes `git rev-parse HEAD` and passes it as a build arg (alternatives: bare build arg in the deploy command; BuildKit additional context reading `.git`). API logs its commit at startup; local dev stores NULL. Changes the deploy rule to `git pull && ./deploy.sh` (user to confirm then). Parked 2026-10-04.
-- **Status:** in_progress
+- [x] Merged via PR #5 (`9d75d91`); user created `/home/srub/swipe-rss-backups` (a first attempt with `~` landed elsewhere: the docs should use the absolute path); deployed 2026-10-06 18:42; manual run: `backup succeeded … 180224 bytes … items=116 tombstones=138 swipes=0`; first scheduled run 19:37 checked in the background
+- [x] Docs use the absolute backup path `/home/srub/swipe-rss-backups` instead of `~/…` (2026-10-06; `~` depends on who runs the command)
+- [x] Compose review (2026-10-06, user: the file is enough): migrate first (`service_completed_successfully`), `restart: unless-stopped` + Docker at boot, API health check, loopback-only port, `.env` for `api` only, log rotation, data volume + backup mount. Not needed now: resource limits, a scheduler health check
+- [x] ~~Record the backend git commit with each stored swipe~~ moved to `PROJECT_PLAN.md` §7 (2026-10-06, user); deploys keep being noted with date, time and commit
+- **Status:** complete
 
 ### Phase 5: Android MVP (stage 5)
 

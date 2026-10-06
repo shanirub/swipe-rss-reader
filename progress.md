@@ -323,6 +323,15 @@
 - User asked to remove every leftover of the restore version: none in code/config; stale mutmut numbers in `task_plan.md` fixed. `.md` recheck before commit: `PROJECT_PLAN.md` described the check twice (old `quick_check` sentence removed), README `.env.example` line (backup dir), `findings.md` current state (server at `55eab1e`, prune hourly) and resources (backup module, mount, setting), next step. Diagrams revalidated. Committed, PR opened.
 - Files: `backend/src/swipe_rss/backup.py` (new), `backend/tests/test_backup.py` (new), `backend/src/swipe_rss/{cli,config}.py`, `backend/tests/test_config.py`, `backend/crontab`, `compose.yaml`, `.env.example`, `backend/scripts/mutants.py`, `README.md`, `backend/tests/README.md`, `docs/architecture.md`, `PROJECT_PLAN.md`, plan files
 
+### Stage 4 deploy and wrap-up (2026-10-06)
+
+- **Status:** complete
+- PR #5 merged (`9d75d91`). First deploy attempt stopped before any change: `/home/srub/swipe-rss-backups` didn't exist (the user's first `sudo install … ~/…` had landed elsewhere, likely `/root`); with the absolute path it worked. Deploy (user OK) 18:42 UTC: api healthy, migrate 0, crontab has the backup line, `/health` 200 over the tailnet. Manual run: `backup succeeded: swipe_rss-20261006T1843Z.db (180224 bytes) version=0004 feed_status=29 items=116 tombstones=138 swipes=0 saved=0`; first scheduled run at 19:37 UTC checked by a background job (result after this commit).
+- `backend_commit` moved to `PROJECT_PLAN.md` §7 (user); deploys stay noted with date, time and commit. Compose review (user: the file is enough): nothing missing for a single server. Docs use the absolute backup path. Stage 4 complete; next stage 5 (Android MVP).
+- Deploy history so far: `55eab1e` 2026-10-06 15:03 UTC (stage 3), `9d75d91` 2026-10-06 18:42 UTC (stage 4).
+- `.md` recheck before commit: diff reviewed, `findings.md` current state (server at `9d75d91`, backup job), this entry. Committed, PR opened.
+- Files: `PROJECT_PLAN.md`, `README.md`, `compose.yaml` (comment), `docs/architecture.md`, plan files
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -404,6 +413,7 @@
 | Backup in the container | `compose run scheduler swipe-rss backup` | success line with counts | `backup succeeded: … version=0004 … swipes=0`, rotated out 0 | pass |
 | Stale WAL after restore into a damaged DB | experiment, SQLite 3.46.1 (image) and 3.51.2 | — | stale WAL discarded by SQLite; rows = snapshot | info |
 | End-to-end restore in the container (command later dropped) | backup → insert → restore | snapshot state back, safety copy kept | 0 → 1 → 0 items; `swipe_rss-before-restore-…` | pass |
+| Backup on the server | manual `swipe-rss backup` after deploy | snapshot + success line | 180 KB, `version=0004 feed_status=29 items=116 tombstones=138` | pass |
 | Extraction sample, one article per feed | `fetch_html` + trafilatura | most extract | 12 ok, Ars ×9 405 (AWS WAF), mekomit 403 | info |
 
 ## Error Log
@@ -444,4 +454,4 @@
 | Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |
-| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard; `api` Compose service; first stage 2 deploy (API live over the tailnet); merge to `main` (PR #1); contract coverage and must-fail tests; Schemathesis; CI workflow; PR #2 merged; triage policy; README rewrite; triage tests (PR #3); retention design; pruning job test-first |
+| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard; `api` Compose service; first stage 2 deploy (API live over the tailnet); merge to `main` (PR #1); contract coverage and must-fail tests; Schemathesis; CI workflow; PR #2 merged; triage policy; README rewrite; triage tests (PR #3); retention design; pruning job test-first; on-server backups (stage 4) |
