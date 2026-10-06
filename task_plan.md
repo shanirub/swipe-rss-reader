@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Mutmut triage complete (branch `stage2-mutmut-triage`): commit, PR + merge, server to the merged `main` (needs user OK). Then mark Phase 2 complete and start Phase 3 (retention).
+Phase 3 pruning job built and tested (branch `stage3-retention`, uncommitted): `.md` recheck, commit, PR, merge; then deploy with a dry run first (`docker compose run --rm scheduler swipe-rss prune --dry-run`), with user approval. Server still runs `7531460` (PR #3 changed only tests/docs).
 
 ## Current Phase
 
-Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing, `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy, merge to `main`, contract coverage, spec's global rules (404/405/422), token middleware, 413, logging, Schemathesis, CI, timestamp range, test deploy, compose smoke job, merge to `main` (PR #2), mutmut survivor triage done; next PR of the triage branch, then Phase 3)
+Phase 3 (in progress: retention designed and built test-first, not yet deployed; Phase 2 complete 2026-10-06, PR #3 merged as `977c094`)
 
 ## Phases
 
@@ -51,7 +51,7 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 - [x] `swipes` / `saved` migration (`0003`), incl. `items.swiped_at` (2026-10-03)
 - [x] FastAPI app skeleton (2026-10-03): `fastapi`/`uvicorn` deps (`trafilatura` deferred to the extraction job); `api.create_app` factory; FastAPI's `/docs`, `/redoc`, `/openapi.json` off; `GET /health`; `.env.example`
 - [x] Bearer token auth (2026-10-03): app-level dependency + `PUBLIC_PATHS` allowlist, constant-time compare, fails closed without a ≥32-char token
-- [x] Mutation checks as a script (2026-10-03): `backend/scripts/mutants.py`, curated mutants (55 by 2026-10-05), all killed; documented in `backend/tests/README.md`
+- [x] Mutation checks as a script (2026-10-03): `backend/scripts/mutants.py`, curated mutants (57 by 2026-10-06), all killed; documented in `backend/tests/README.md`
 - [x] mutmut adopted as an exploration tool (2026-10-03): `backend/scripts/run_mutmut.py`, config in `pyproject.toml`; gaps it found closed with tests (empty query params, golden dedup keys, redirects, User-Agent, missing author, updated-only date, truncation whitespace)
 - [x] Contract coverage, input hardening, Schemathesis, CI; merged via PR #2 (2026-10-05, `7531460`), server back on `main`
 - [x] Triage the remaining mutmut survivors by impact before finishing stage 2 (2026-10-05/06, policy in findings.md): 347 survivors at the start (79%); `models`, `feeds`, `text` accepted; `fetcher` 10 tests; `api`, `config`, `logs`, `timestamps` 7 tests; everything else accepted with a reason per category. Modules triaged 2026-10-04 (`queue`, `swipes`, `saved`, `feed_health`, `safe_fetch`, `extraction`) unchanged since
@@ -74,12 +74,19 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 - [x] Compose smoke job (2026-10-05, user request): `docker compose up --wait api` (migrate + api, no scheduler), checks migrate exit 0, health, 401/200, `/feeds`; same steps verified locally in a git worktree
 - [x] Test deploy of the branch (2026-10-05, user OK incl. one-time branch switch by Claude): server on `stage2-contract-tests` at `88dc588`; api healthy, no token → 401 for every path/method/body, rotation + log level active, scheduler without token, DB intact
 - [x] Test categories table in `backend/tests/README.md` (timeless examples; spec → code and code → spec as two rows; Schemathesis row)
-- **Status:** in_progress
+- [x] Merged via PR #3 (2026-10-06, `977c094`): triage tests + README rewrite
+- **Status:** complete
 
 ### Phase 3: Retention (stage 3)
 
-- [ ] Pruning job: unswiped, swiped (`items.swiped_at`), saved, tombstone expiry
-- **Status:** pending
+- [x] Retention design, part 1 (2026-10-06, user): unswiped items 2 days from `fetched_at`; saved entries 2 weeks from the save swipe's `received_at`, read or unread alike (rule: whatever keeps data longest)
+- [x] Swiped items: same 2-day rule from `fetched_at` as unswiped (2026-10-06, user: option B); pruning job built test-first (user)
+- [x] Job mechanics (2026-10-06, user approved the bundle): hourly at :07, one transaction, no VACUUM, one INFO line, `--dry-run`, `now` passed in
+- [x] Swipe safety, all three layers (2026-10-06, user): trigger in migration `0004` (no DELETE/UPDATE on `swipes`), survival test, curated mutant
+- [x] Tombstones kept forever (2026-10-06, user: option B; ~3 MB/year)
+- [x] Pruning job, test-first (2026-10-06): tests first (red against a do-nothing stub: 10 failures), then migration `0004` (append-only triggers on `swipes`), `prune.py`, `swipe-rss prune [--dry-run]`, crontab `7 * * * *` (green); 2 curated mutants killed; mutmut on `prune`: 35/35 killed (100%); smoke on a dev-DB copy: dry run 58 counted, real run 58 deleted, tombstones kept
+- [ ] Commit, PR, merge; deploy (first prune on the server: dry run first)
+- **Status:** in_progress
 
 ### Phase 4: Deployment & backups (stage 4)
 
@@ -200,6 +207,9 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 | Strict query parameters via app-level dependency, own walk of the dependency tree | Secure by default (new routes strict automatically); FastAPI's flattening helper is internal (`get_flat_dependant` gone in 0.142) |
 | PyYAML as an explicit dev dependency; `pythonpath = ["tests"]` for test helpers | Tests declare what they use (was only transitive via the model generator); `conftest.py` imports `tests/contract.py` |
 | README conventions (2026-10-05, user request after research) | Tables only for rows with several short attributes, cells about one line; one description per item → bullet list; reference parts (what each test file covers) terse and grouped like the code; short table of contents only in long READMEs (tests README), GitHub's outline covers the rest |
+| Retention (2026-10-06, user: whatever keeps data longest): items 2 days from `fetched_at`, swiped or not; saved 2 weeks from the save's `received_at`, read or not; tombstones and swipes forever | One rule per table; undo stays possible until expiry; tombstones ≈ 3 MB/year; server clock for saves |
+| Pruning job hourly at :07, one transaction, no VACUUM, `--dry-run`, built test-first (2026-10-06, user) | ~3 rows per run; freed pages are reused; look before the first real delete |
+| `swipes` append-only by triggers (migration `0004`) + survival test + curated mutant (2026-10-06, user) | The training data can't be refetched; the trigger also covers code and manual sessions outside our tests. A table rebuild drops triggers, so the tests check them at head |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 
 ## Errors Encountered

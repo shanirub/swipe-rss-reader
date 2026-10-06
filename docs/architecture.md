@@ -34,7 +34,7 @@ flowchart LR
         serve["Tailscale Serve :8443<br/>HTTPS, MagicDNS certificate"]
         api["api container<br/>uvicorn + FastAPI on 127.0.0.1:8001"]
         db[("SQLite in named volume<br/>/data/swipe_rss.db")]
-        sched["scheduler container<br/>supercronic: fetch every 15 min,<br/>extract every minute"]
+        sched["scheduler container<br/>supercronic: fetch every 15 min,<br/>extract every minute, prune hourly"]
         cfg[/"config/feeds.toml<br/>read-only bind mount"/]
     end
 
@@ -55,7 +55,8 @@ Arrows point from a module to the modules it imports. `api_models.py` is generat
 ```mermaid
 flowchart TD
     spec[/"api/openapi.yaml<br/>(hand-written contract)"/]
-    cli["cli.py<br/>swipe-rss fetch, extract"]
+    cli["cli.py<br/>swipe-rss fetch, extract, prune"]
+    prune["prune.py<br/>retention job"]
     fetcher["fetcher.py<br/>fetch run"]
     feeds["feeds.py<br/>feeds.toml loader"]
     dedup["dedup.py<br/>dedup keys"]
@@ -76,7 +77,8 @@ flowchart TD
     alembic["alembic/<br/>migrations"]
 
     spec -. "datamodel-codegen" .-> api_models
-    cli --> config & db & feeds & fetcher & extraction & logs
+    cli --> config & db & feeds & fetcher & extraction & prune & logs
+    prune --> models
     extraction --> safe & models & text
     safe --> fetcher
     fetcher --> feeds & dedup & text & models & stamps
@@ -125,10 +127,10 @@ erDiagram
     TOMBSTONES {
         TEXT feed_id PK
         TEXT dedup_key PK
-        TEXT first_seen_at "kept about 90 days"
+        TEXT first_seen_at "kept forever"
     }
     SWIPES {
-        TEXT swipe_id PK "UUID from the phone"
+        TEXT swipe_id PK "UUID from the phone; table append-only (triggers)"
         TEXT action "CHECK never, save, read_now"
         TEXT swiped_at "phone clock, UTC"
         TEXT received_at "server clock"
@@ -548,11 +550,11 @@ stateDiagram-v2
     [*] --> InQueue: new entry fetched (swiped_at NULL)
     InQueue --> Swiped: swipe arrives (swiped_at set, first swipe time kept)
     Swiped --> InQueue: undo (stage 8, planned)
-    InQueue --> Pruned: unswiped for 2 days (stage 3, planned)
-    Swiped --> Pruned: pruning job (stage 3, planned)
+    InQueue --> Pruned: 2 days after fetch (prune job, hourly)
+    Swiped --> Pruned: 2 days after fetch, same rule
     Pruned --> [*]
     note right of Pruned
-        The tombstone keeps the dedup key for about 90 days,
+        The tombstone keeps the dedup key forever,
         so the feed can't re-insert the item as new.
         Swipes keep their own copy of the card forever.
     end note
@@ -568,8 +570,8 @@ stateDiagram-v2
     pending --> done: extraction succeeded (text stored)
     pending --> pending: temporary failure, retry after 5 then 30 min
     pending --> failed: third attempt failed, or a permanent error (404, blocked address, not HTML, no text)
-    done --> [*]: pruned after 2 weeks (stage 3)
-    failed --> [*]: pruned after 2 weeks (stage 3)
+    done --> [*]: pruned 2 weeks after the save
+    failed --> [*]: pruned 2 weeks after the save
     note right of failed
         The app shows "couldn't extract, open original"
         and opens the page in Custom Tabs.

@@ -100,7 +100,7 @@ All networking happens over **Tailscale** (WireGuard-based private mesh VPN). No
 ### Scheduling
 
 - **Dedicated scheduler container** (supercronic) runs the fetcher **every 15 minutes** (`backend/crontab`). A one-shot **`migrate`** Compose service runs `alembic upgrade head` first; other services start only after it completes, so migrations never race. This keeps scheduling inside Compose and isolates fetch failures from the API. The **`api`** service (same image) runs uvicorn, published on `127.0.0.1:8001` only, with a Docker health check on `/health`. Only `api` reads `.env` (the token); `.env` is optional for Compose, so a missing token stops just the API (it fails closed) while fetching and extraction keep running.
-- The same container runs the **extraction job** every minute (see Content extraction) and, from stage 3, the pruning job.
+- The same container runs the **extraction job** every minute (see Content extraction) and the **pruning job** hourly (see Retention).
 
 ### Feeds
 
@@ -192,11 +192,14 @@ Rule: **item properties are captured at swipe time** (items are pruned, so anyth
 
 ### Retention
 
-- Unswiped items: **2 days** (may later be tuned per feed).
-- Swiped items (`items.swiped_at` set): deleted by the pruning job; how soon is decided in stage 3 (default: next run, since the swipe log holds the card).
-- Saved items: **2 weeks**.
-- **Tombstones:** keep seen dedup keys (see Deduplication) for ~90 days (longer than any feed's window) so pruned items are not re-inserted as new. Written at first sight, expired by the pruning job.
+- Unswiped items: **2 days** (may later be tuned per feed), counted from **`fetched_at`** (decided 2026-10-06: the rule giving the longest time; `published_at` is earlier or missing).
+- Swiped items (`items.swiped_at` set): **same rule as unswiped, 2 days from `fetched_at`** (decided 2026-10-06; rejected: delete at the next run). One rule for all items, and Stage 8's undo (clear the flag) keeps working until the item expires anyway; the cost is a little disk space.
+- Saved items: **2 weeks**, counted from the save swipe's **`received_at`** (server clock; for a late offline sync it is later than the phone's `swiped_at`), read or unread alike (decided 2026-10-06).
+- **Tombstones:** seen dedup keys (see Deduplication) are **kept forever** (decided 2026-10-06; the plan said ~90 days), so pruned items are never re-inserted as new. Written at first sight, never pruned. Cost: ~60 rows/day ≈ 3 MB/year; lookups are primary-key lookups. An expired tombstone would only have mattered for an entry still in the feed that also passes the age filter (undated, future-dated, or with `max_item_age_hours` lifted). Expiry can be added later if ever needed; a deleted tombstone can't be recovered.
 - **Swipe log is kept permanently** and stores the item's headline and summary text itself, not only a reference to an item that will be pruned.
+- Items of a feed removed from `feeds.toml` expire like all items (2 days after fetch); its tombstones and `feed_status` row stay (`GET /feeds` lists only feeds in the file). This settles the former open decision "what happens to items of a removed feed" with its default.
+- **Pruning job** (decided 2026-10-06): `swipe-rss prune` in the scheduler container, **hourly** at minute 7 (away from the fetch runs); one transaction per run (steady state ≈ 3 rows per run); no `VACUUM` (SQLite reuses freed pages, so the file stops growing at steady state); one INFO line per run with the counts; `--dry-run` counts without deleting (for the first deploy); `now` passed in (server UTC), so the rules are testable with a fixed clock. Built test-first.
+- **Swipes can never be deleted or changed**, three layers (decided 2026-10-06): a database trigger (migration `0004`) rejects every `DELETE` and `UPDATE` on `swipes`, whatever the code path (including a manual `sqlite3` session or a future job); a test that prunes a database of old swipes and checks they all survive; a curated mutant that adds a swipe delete to the job, which that test must kill. An append-only log needs neither operation; undo (stage 8) is a new event.
 
 ### Queue ordering (pre-ML)
 
@@ -243,9 +246,9 @@ Rule: **item properties are captured at swipe time** (items are pruned, so anyth
 
 - **feed_status:** per-feed fetch state, conditional-GET headers, last successful fetch, last new item, last error.
 - **items:** fetched articles (subject to retention); nullable `swiped_at` flags swiped items, which leave the queue but stay until pruned.
-- **swipes:** permanent swipe log; see "Swipe log fields" in §3. Item identity `(feed_id, item_key)` (indexed). `action` and `saved.extraction_status` are limited by CHECK constraints.
+- **swipes:** permanent, append-only swipe log (DELETE and UPDATE rejected by triggers, migration `0004`); see "Swipe log fields" in §3. Item identity `(feed_id, item_key)` (indexed). `action` and `saved.extraction_status` are limited by CHECK constraints.
 - **saved:** read-later entries, one per `(feed_id, item_key)`, referencing the save swipe (`swipe_id`, foreign key); extracted content (`text`, `extracted_at`) and extraction state (`extraction_status`, `attempts`, `last_error`, `next_attempt_at`), nullable `read_at`.
-- **tombstones:** seen `(feed_id, key)` dedup keys with first-seen timestamps (~90 days), written at insert time.
+- **tombstones:** seen `(feed_id, key)` dedup keys with first-seen timestamps, written at insert time, kept forever.
 
 Feed definitions themselves live in the feeds file, not the database.
 
@@ -260,7 +263,7 @@ Stages are **vertical slices**: each stage adds the tables it needs via a new Al
 0. **Server foundation:** Docker, Tailscale Serve, firewall verification (no public ports), automatic security updates, repo clone on the server.
 1. **Ingest:** SQLite settings, Alembic baseline, `feed_status` / `items` / `tombstones` tables. Fetcher: feeds file → fetch (conditional GET) → parse → deduplicate (incl. tombstones) → store. Run by the scheduler container. Testable by running a fetch and inspecting the DB with `sqlite3`.
 2. **API:** OpenAPI contract first, then `swipes` / `saved` tables (new migration) and endpoints for: swipe queue, recording swipes, saved list, extracted content, per-feed status. Includes the `api` Compose service (published on `127.0.0.1:8001`) so the stage is testable with `curl` over the tailnet; stage 4 completes the rest of the Compose setup.
-3. **Retention:** pruning job (unswiped items, swiped items, saved items, tombstone expiry). Comes after the API because its rules depend on swipe and save state.
+3. **Retention:** pruning job (unswiped and swiped items, saved items; tombstones are kept). Comes after the API because its rules depend on swipe and save state.
 4. **Deployment & backups:** full Compose setup, encrypted rclone backup to Google Drive.
 5. **Android MVP:** swipe cards against the API, Room cache, offline swipe queue with WorkManager sync (single-swipe fallback on `422`, dead-letter store with retry on app update, debug screen with retry/export), feed-status screen.
 6. **Read-later view:** saved list, extracted-content reader, Custom Tabs fallback, permanent log of reads.
@@ -273,8 +276,6 @@ Stages are **vertical slices**: each stage adds the tables it needs via a new Al
 
 All decisions needed before stages 0–2 are resolved. Remaining items can wait until the stage noted.
 
-- What happens to existing items when a feed is removed from `feeds.toml`. *(after stage 1; default: let them expire)*
-- How soon swiped items are pruned. *(stage 3; default: next pruning run)*
 - Behavior of a saved item after it is read (remove vs. move to a read history). *(stage 6; a nullable `read_at` column keeps both options open cheaply)*
   - Either way, **opening a saved item is logged as a permanent, append-only event** (it is a training signal: saved-but-never-read is a weaker positive), not only as `saved.read_at`, which disappears when `saved` rows are pruned after two weeks. *(stage 6)*
 - Backup method and policy: snapshot via `sqlite3 .backup` or `VACUUM INTO` before upload (never copy the live WAL database file); frequency and retention. *(stage 4)*

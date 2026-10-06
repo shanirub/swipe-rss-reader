@@ -171,6 +171,7 @@ Grouped by the part of the system they test.
 - Downgrade to `0002` and upgrade again
 - `0002` caps items stored before the card limits existed and leaves valid rows untouched
 - `0003` swipe/saved rows join, and its CHECK and foreign-key constraints reject bad rows
+- `0004`: `swipes` rejects every DELETE and UPDATE (checked at head, so a later table rebuild that drops the triggers fails the test), still accepts inserts; the downgrade removes the triggers
 
 ### Ingest
 
@@ -282,6 +283,15 @@ Grouped by the part of the system they test.
 **`test_config.py`**: runtime settings.
 - Every setting comes from its environment variable (DB path, feeds path, token, log level)
 - An empty token counts as unset
+
+### Retention
+
+**`test_prune.py`**: the pruning job, written before the code (test-first).
+- The limits are the decided ones: items 2 days, saved entries 2 weeks
+- Items are deleted 2 days after `fetched_at`, swiped or not; exactly 2 days is kept; the publish date doesn't matter
+- Saved entries are deleted 2 weeks after the save swipe's `received_at` (server clock, not the phone's `swiped_at`); exactly 2 weeks is kept; read and unread alike
+- Swipes, tombstones and feed status are never deleted
+- The result counts what was deleted; a dry run counts the same and deletes nothing
 
 ### Extraction
 

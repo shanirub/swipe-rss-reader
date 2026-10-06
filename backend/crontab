@@ -3,3 +3,6 @@
 */15 * * * * swipe-rss fetch
 # Extract the text of saved articles every minute (only due entries; usually nothing to do).
 * * * * * swipe-rss extract
+# Delete expired items (2 days after fetch) and saved entries (2 weeks after the save), hourly,
+# away from the fetch runs. Swipes and tombstones are never deleted.
+7 * * * * swipe-rss prune
