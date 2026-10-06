@@ -108,7 +108,7 @@ git pull && docker compose up -d --build
 
 The `api` service needs `.env` with `SWIPE_RSS_API_TOKEN`; without it only the API refuses to start, the other services keep running.
 
-Backups: the scheduler writes an hourly database snapshot to `~/swipe-rss-backups` on the server (outside the repo and every Docker volume). Create that directory once, owned by the container user: `sudo install -d -o 10001 -g 10001 ~/swipe-rss-backups`.
+Backups: the scheduler writes an hourly database snapshot to `/home/srub/swipe-rss-backups` on the server (outside the repo and every Docker volume). Create that directory once, owned by the container user: `sudo install -d -o 10001 -g 10001 /home/srub/swipe-rss-backups`.
 
 Each snapshot is checked right after it's written: it is opened as a separate, read-only database and queried (integrity check, migration version, row count of every table); the log line `backup succeeded: …` shows the counts. The production database is only read, by the backup itself.
 

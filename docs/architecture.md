@@ -35,7 +35,7 @@ flowchart LR
         api["api container<br/>uvicorn + FastAPI on 127.0.0.1:8001"]
         db[("SQLite in named volume<br/>/data/swipe_rss.db")]
         sched["scheduler container<br/>supercronic: fetch every 15 min,<br/>extract every minute, prune + backup hourly"]
-        bak[/"~/swipe-rss-backups<br/>host directory, outside the volume"/]
+        bak[/"/home/srub/swipe-rss-backups<br/>host directory, outside the volume"/]
         cfg[/"config/feeds.toml<br/>read-only bind mount"/]
     end
 
