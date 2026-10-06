@@ -35,8 +35,8 @@ The three tracking files (`task_plan.md`, `progress.md`, `findings.md`) and the 
 └── backend/                 Python backend (uv project)
     ├── pyproject.toml       dependencies, ruff, pytest, model generator config
     ├── Dockerfile           image for all backend services
-    ├── crontab              supercronic schedule: fetch every 15 min, extract every minute
-    ├── alembic/             database migrations (SQLite): 0001 baseline, 0002 cap items, 0003 swipes/saved
+    ├── crontab              supercronic schedule: fetch every 15 min, extract every minute, prune hourly
+    ├── alembic/             database migrations (SQLite): 0001 baseline, 0002 cap items, 0003 swipes/saved, 0004 swipes append-only
     ├── src/swipe_rss/
     │   ├── api.py           HTTP API (FastAPI app factory, bearer-token auth, routes)
     │   ├── queue.py         swipe queue: unswiped items, round-robin across feeds
@@ -45,7 +45,8 @@ The three tracking files (`task_plan.md`, `progress.md`, `findings.md`) and the 
     │   ├── feed_health.py   per-feed fetch health for GET /feeds
     │   ├── extraction.py    extraction job: saved articles → text (trafilatura), retries
     │   ├── safe_fetch.py    SSRF guard: fetches untrusted URLs only from public addresses
-    │   ├── cli.py           `swipe-rss` command: `fetch`, `extract`
+    │   ├── prune.py         retention job: items 2 days after fetch, saved 2 weeks after the save
+    │   ├── cli.py           `swipe-rss` command: `fetch`, `extract`, `prune`
     │   ├── config.py        settings from environment variables
     │   ├── logs.py          logging setup: SWIPE_RSS_LOG_LEVEL, no health checks in the access log
     │   ├── timestamps.py    the API's timestamp range (1970 ≤ t < 3000), shared by API and fetcher

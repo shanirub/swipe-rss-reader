@@ -133,3 +133,34 @@ def test_0002_caps_items_stored_before_the_limits(db_path):
     assert len(tags) == 50 and all(len(t) == 200 for t in tags)
     assert tuple(ok) == ("fine", "https://a.example/ok", None, None)  # untouched
     engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "statement",
+    ["DELETE FROM swipes", "DELETE FROM swipes WHERE swipe_id = 's1'", "UPDATE swipes SET headline = 'changed'"],
+)
+def test_0004_swipes_can_never_be_deleted_or_changed(engine, statement):
+    # Checked at head on purpose: a later batch-mode migration that rebuilds `swipes` would drop
+    # the triggers silently (SQLite triggers don't survive copy-drop-rename), and this test would fail.
+    with engine.begin() as conn:
+        conn.execute(INSERT_SWIPE, SWIPE)
+    with pytest.raises(IntegrityError, match="append-only"), engine.begin() as conn:
+        conn.execute(text(statement))
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT headline FROM swipes")).scalars().all() == ["h"]
+
+
+def test_0004_swipes_still_accept_inserts(engine):
+    with engine.begin() as conn:
+        conn.execute(INSERT_SWIPE, SWIPE)
+        conn.execute(INSERT_SWIPE, {**SWIPE, "swipe_id": "s2"})
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM swipes")).scalar() == 2
+
+
+def test_0004_downgrade_removes_the_triggers(engine):
+    command.downgrade(_config(engine), "0003")
+    with engine.begin() as conn:
+        conn.execute(INSERT_SWIPE, SWIPE)
+        conn.execute(text("DELETE FROM swipes"))
+    _upgrade(engine, "head")

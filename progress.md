@@ -301,6 +301,16 @@
 - Files: `backend/tests/{test_api_input,test_logs}.py`, `backend/tests/test_config.py` (new), `backend/tests/README.md`, plan files
 - `.md` recheck before commit: triage checkbox in `task_plan.md` rewritten (run-on wording); `PROJECT_PLAN.md`, root `README.md`, diagrams unaffected (no code change). Committed with the `fetcher` triage (one topic: the triage), PR opened.
 
+### Phase 3: retention design + pruning job (test-first)
+
+- **Status:** complete (not deployed)
+- Decisions, one at a time (all recorded in `PROJECT_PLAN.md` §3 Retention): items 2 days from `fetched_at`, swiped or not (option B); saved 2 weeks from the save's `received_at`, read or unread alike; tombstones kept forever (B); job mechanics bundle (hourly :07, one transaction, no VACUUM, one log line, `--dry-run`, `now` passed in); swipes protected by trigger + test + curated mutant. User rule: whatever keeps data longest.
+- Built test-first (user's choice): `test_prune.py` + 0004 tests written first; import error, then a do-nothing stub → 10 failed / 3 passed (the "kept" tests); then `0004_swipes_append_only.py`, `prune.py`, CLI, crontab → green. 350 passed, lint clean. Curated mutants +2 (57), both killed. mutmut on `prune`: 35/35.
+- Verified first: triggers raise `IntegrityError`; a batch-style table rebuild drops them silently (findings).
+- Docs: README tree, tests README (retention section, 0004), diagrams 1, 2, 3, 14, 15.
+- `.md` recheck before commit: 18 diagrams render in Mermaid 10/11 (validator recreated in the scratchpad from the findings method); `PROJECT_PLAN.md`: scheduling line (pruning now hourly), data model (`swipes` append-only), the open decision on removed feeds settled by retention (default), `max_item_age_hours` left open for the user; decisions table in `task_plan.md`. Committed, PR opened.
+- Files: `backend/src/swipe_rss/prune.py` (new), `backend/alembic/versions/0004_swipes_append_only.py` (new), `backend/src/swipe_rss/cli.py`, `backend/crontab`, `backend/tests/test_prune.py` (new), `backend/tests/test_migrations.py`, `backend/scripts/mutants.py`, `backend/tests/README.md`, `README.md`, `docs/architecture.md`, `PROJECT_PLAN.md`, plan files
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -368,6 +378,11 @@
 | Triage tests (api, config, logs) | `uv run pytest` | all pass | 335 passed | pass |
 | mutmut on api/config/logs/timestamps after triage | `scripts/run_mutmut.py api config logs timestamps` | 32 targeted mutants killed | all killed, no new survivors; 113 survived + 7 timeouts, all accepted | pass |
 | TestClient vs uvicorn body delivery | probe ASGI app, 5 × 30-byte chunked body | — | TestClient: 1 message; uvicorn: 90+30+30, or 5 × 30 with delays | info |
+| Prune tests before the code | `pytest test_prune.py test_migrations.py` vs. stub | rule tests fail | 10 failed, 12 passed (incl. 3 "kept" tests) | pass |
+| Prune + 0004 after implementation | `uv run pytest` | all pass | 350 passed | pass |
+| Retention curated mutants | `mutants.py prune migration` | killed | 3/3 (incl. the existing schema mutant) | pass |
+| mutmut on `prune` | `run_mutmut.py prune` | — | 35/35 killed | pass |
+| Prune smoke on a dev-DB copy | `swipe-rss prune --dry-run`, then `prune` | counts, then deletes; tombstones stay | 58 / 58, tombstones 58 | pass |
 | Extraction sample, one article per feed | `fetch_html` + trafilatura | most extract | 12 ok, Ars ×9 405 (AWS WAF), mekomit 403 | info |
 
 ## Error Log
@@ -408,4 +423,4 @@
 | Where am I going? | Phase 2 API → 3 retention → 4 deployment & backups → 5–6 Android → 7 ranking → 8 iterate |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |
-| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard; `api` Compose service; first stage 2 deploy (API live over the tailnet); merge to `main` (PR #1); contract coverage and must-fail tests; Schemathesis; CI workflow; PR #2 merged; triage policy; README rewrite |
+| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard; `api` Compose service; first stage 2 deploy (API live over the tailnet); merge to `main` (PR #1); contract coverage and must-fail tests; Schemathesis; CI workflow; PR #2 merged; triage policy; README rewrite; triage tests (PR #3); retention design; pruning job test-first |

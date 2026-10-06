@@ -609,6 +609,26 @@ MUTANTS = [
         killed_by="test_query_parameter_declared_in_a_dependency_is_accepted",
         why="a parameter declared anywhere in the route's dependencies is allowed",
     ),
+    # --- retention ---
+    Mutant(
+        name="prune: deletes old swipes too",
+        file="src/swipe_rss/prune.py",
+        original="        saved = session.execute(delete(Saved).where(expired_save)).rowcount\n",
+        mutated="        saved = session.execute(delete(Saved).where(expired_save)).rowcount\n"
+        "        session.execute(delete(Swipe).where(Swipe.received_at < now - SAVED_MAX_AGE))\n",
+        tests="tests/test_prune.py",
+        killed_by="test_swipes_tombstones_and_feed_status_are_never_deleted",
+        why="the swipe log is permanent training data",
+    ),
+    Mutant(
+        name="migration 0004: swipes not protected by triggers",
+        file="alembic/versions/0004_swipes_append_only.py",
+        original='    for event in ("DELETE", "UPDATE"):\n',
+        mutated="    for event in ():\n",
+        tests="tests/test_migrations.py",
+        killed_by="test_0004_swipes_can_never_be_deleted_or_changed",
+        why="no code path, not even a manual sqlite3 session, can delete or change a swipe",
+    ),
 ]
 
 _FAILED_LINE = re.compile(r"^(?:FAILED|ERROR) \S+::(\w+)", re.MULTILINE)
