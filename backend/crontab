@@ -6,3 +6,6 @@
 # Delete expired items (2 days after fetch) and saved entries (2 weeks after the save), hourly,
 # away from the fetch runs. Swipes and tombstones are never deleted.
 7 * * * * swipe-rss prune
+# Snapshot the database into the host's backup directory (outside every Docker volume), hourly,
+# away from fetch (:00/:15/:30/:45) and prune (:07). Keeps 48 h of snapshots plus 14 midnight ones.
+37 * * * * swipe-rss backup

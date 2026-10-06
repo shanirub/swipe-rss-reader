@@ -30,6 +30,19 @@ services:
   scheduler:
     <<: *backend
     command: ["supercronic", "/app/crontab"]
+    environment:
+      SWIPE_RSS_DB: /data/swipe_rss.db
+      SWIPE_RSS_FEEDS: /config/feeds.toml
+      SWIPE_RSS_LOG_LEVEL: ${SWIPE_RSS_LOG_LEVEL:-INFO}
+      SWIPE_RSS_BACKUP_DIR: /backups
+    # Own list: a merge key replaces lists instead of extending them. Only the scheduler gets the
+    # backup directory: a host directory outside the repo and outside every Docker volume, so
+    # `docker compose down -v` or a volume prune can't delete the backups (PROJECT_PLAN.md §3 Backups).
+    # Create it once, owned by the container user: sudo install -d -o 10001 -g 10001 ~/swipe-rss-backups
+    volumes:
+      - data:/data
+      - ./config:/config:ro
+      - ${SWIPE_RSS_BACKUP_HOST_DIR:-../swipe-rss-backups}:/backups
     restart: unless-stopped
     depends_on:
       migrate:

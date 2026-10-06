@@ -23,8 +23,8 @@ The three tracking files (`task_plan.md`, `progress.md`, `findings.md`) and the 
 ├── progress.md              session log, test results, errors                   │ (Claude Code skill)
 ├── findings.md              research notes, server inventory                    ┘
 ├── .github/workflows/ci.yml  CI jobs, see backend/tests/README.md
-├── compose.yaml             Docker Compose: migrate, scheduler, api (127.0.0.1:8001), log rotation
-├── .env.example             template for .env (API token, optional log level); .env itself is never committed
+├── compose.yaml             Docker Compose: migrate, scheduler, api (127.0.0.1:8001), log rotation, backup mount
+├── .env.example             template for .env (API token; optional log level, backup host dir); never committed
 ├── docs/
 │   ├── architecture.md      diagrams: system, modules, schema, flows, lifecycles
 │   └── logo.png             project logo (used in this README)
@@ -35,7 +35,7 @@ The three tracking files (`task_plan.md`, `progress.md`, `findings.md`) and the 
 └── backend/                 Python backend (uv project)
     ├── pyproject.toml       dependencies, ruff, pytest, model generator config
     ├── Dockerfile           image for all backend services
-    ├── crontab              supercronic schedule: fetch every 15 min, extract every minute, prune hourly
+    ├── crontab              supercronic schedule: fetch every 15 min, extract every minute, prune + backup hourly
     ├── alembic/             database migrations (SQLite): 0001 baseline, 0002 cap items, 0003 swipes/saved, 0004 swipes append-only
     ├── src/swipe_rss/
     │   ├── api.py           HTTP API (FastAPI app factory, bearer-token auth, routes)
@@ -46,7 +46,8 @@ The three tracking files (`task_plan.md`, `progress.md`, `findings.md`) and the 
     │   ├── extraction.py    extraction job: saved articles → text (trafilatura), retries
     │   ├── safe_fetch.py    SSRF guard: fetches untrusted URLs only from public addresses
     │   ├── prune.py         retention job: items 2 days after fetch, saved 2 weeks after the save
-    │   ├── cli.py           `swipe-rss` command: `fetch`, `extract`, `prune`
+    │   ├── backup.py        on-server snapshots (VACUUM INTO) outside the Docker volume, check, rotation
+    │   ├── cli.py           `swipe-rss` command: `fetch`, `extract`, `prune`, `backup`
     │   ├── config.py        settings from environment variables
     │   ├── logs.py          logging setup: SWIPE_RSS_LOG_LEVEL, no health checks in the access log
     │   ├── timestamps.py    the API's timestamp range (1970 ≤ t < 3000), shared by API and fetcher
@@ -106,3 +107,18 @@ git pull && docker compose up -d --build
 ```
 
 The `api` service needs `.env` with `SWIPE_RSS_API_TOKEN`; without it only the API refuses to start, the other services keep running.
+
+Backups: the scheduler writes an hourly database snapshot to `~/swipe-rss-backups` on the server (outside the repo and every Docker volume). Create that directory once, owned by the container user: `sudo install -d -o 10001 -g 10001 ~/swipe-rss-backups`.
+
+Each snapshot is checked right after it's written: it is opened as a separate, read-only database and queried (integrity check, migration version, row count of every table); the log line `backup succeeded: …` shows the counts. The production database is only read, by the backup itself.
+
+Restoring is manual for now. With the stack stopped, so that nothing writes to the database:
+
+```sh
+docker compose stop api scheduler
+docker compose run --rm --no-deps scheduler sh -c \
+  'cp /backups/swipe_rss-20261006T1537Z.db /data/swipe_rss.db && rm -f /data/swipe_rss.db-wal /data/swipe_rss.db-shm'
+docker compose up -d        # also runs migrate, in case the snapshot is older than the code
+```
+
+Everything written after the snapshot is lost (at most an hour).

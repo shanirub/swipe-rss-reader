@@ -629,6 +629,25 @@ MUTANTS = [
         killed_by="test_0004_swipes_can_never_be_deleted_or_changed",
         why="no code path, not even a manual sqlite3 session, can delete or change a swipe",
     ),
+    # --- backups ---
+    Mutant(
+        name="backup: plain file copy instead of VACUUM INTO",
+        file="src/swipe_rss/backup.py",
+        original='        conn.execute("VACUUM INTO ?", (str(target),))\n',
+        mutated='        __import__("shutil").copyfile(db_path, target)\n',
+        tests="tests/test_backup.py",
+        killed_by="test_backup_includes_writes_still_in_the_wal_file",
+        why="in WAL mode a plain copy misses recent writes; the snapshot must be consistent",
+    ),
+    Mutant(
+        name="backup: rotation deletes files it didn't name",
+        file="src/swipe_rss/backup.py",
+        original="        if not match:\n            continue  # not ours: never touched\n",
+        mutated="        if not match:\n            path.unlink()\n            continue\n",
+        tests="tests/test_backup.py",
+        killed_by="test_rotation_never_touches_files_it_did_not_name",
+        why="rotation must never delete a manual copy or any file it didn't create",
+    ),
 ]
 
 _FAILED_LINE = re.compile(r"^(?:FAILED|ERROR) \S+::(\w+)", re.MULTILINE)

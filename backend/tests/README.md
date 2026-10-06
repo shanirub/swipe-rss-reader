@@ -281,7 +281,7 @@ Grouped by the part of the system they test.
 - The filter is installed once, on uvicorn's real access logger
 
 **`test_config.py`**: runtime settings.
-- Every setting comes from its environment variable (DB path, feeds path, token, log level)
+- Every setting comes from its environment variable (DB path, feeds path, token, log level, backup directory)
 - An empty token counts as unset
 
 ### Retention
@@ -292,6 +292,13 @@ Grouped by the part of the system they test.
 - Saved entries are deleted 2 weeks after the save swipe's `received_at` (server clock, not the phone's `swiped_at`); exactly 2 weeks is kept; read and unread alike
 - Swipes, tombstones and feed status are never deleted
 - The result counts what was deleted; a dry run counts the same and deletes nothing
+
+**`test_backup.py`**: on-server snapshots (layer 1), written before the code (test-first).
+- Snapshot names carry the UTC time; a snapshot holds every row, the schema and the swipe triggers
+- Writes still in the WAL file are included (the reason for `VACUUM INTO` over a file copy)
+- The check opens the snapshot as a separate database and queries it (version, row counts); later changes to production don't show up
+- An existing snapshot is never overwritten; a damaged file fails the check
+- Rotation keeps everything from the last 48 hours and midnight snapshots for 14 days, and never touches files it didn't name
 
 ### Extraction
 
