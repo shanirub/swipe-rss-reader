@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Mutmut survivor triage by impact (policy in findings.md, Technical Decisions): `models`, `feeds`, `text` done (all accepted); next `fetcher` by function (`fetch_feed`, `parse_entries`, `store_result`, `run_fetch`), then the parts of `api`, `config`, `logs`, `timestamps` added since the 2026-10-04 triage. Branch `stage2-mutmut-triage`; then Phase 3.
+Mutmut triage complete (branch `stage2-mutmut-triage`): commit, PR + merge, server to the merged `main` (needs user OK). Then mark Phase 2 complete and start Phase 3 (retention).
 
 ## Current Phase
 
-Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing, `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy, merge to `main`, contract coverage, spec's global rules (404/405/422), token middleware, 413, logging, Schemathesis, CI, timestamp range, test deploy, compose smoke job, merge to `main` (PR #2) done; next mutmut survivor triage)
+Phase 2 (in progress: design, spec, generated models, ingest caps, migration `0003`, app skeleton + auth, mutation testing, `/queue` + `/swipes`, architecture diagrams, `/feeds` + `/saved`, extraction job + SSRF guard, `api` Compose service, first stage 2 deploy, merge to `main`, contract coverage, spec's global rules (404/405/422), token middleware, 413, logging, Schemathesis, CI, timestamp range, test deploy, compose smoke job, merge to `main` (PR #2), mutmut survivor triage done; next PR of the triage branch, then Phase 3)
 
 ## Phases
 
@@ -54,7 +54,7 @@ Phase 2 (in progress: design, spec, generated models, ingest caps, migration `00
 - [x] Mutation checks as a script (2026-10-03): `backend/scripts/mutants.py`, curated mutants (55 by 2026-10-05), all killed; documented in `backend/tests/README.md`
 - [x] mutmut adopted as an exploration tool (2026-10-03): `backend/scripts/run_mutmut.py`, config in `pyproject.toml`; gaps it found closed with tests (empty query params, golden dedup keys, redirects, User-Agent, missing author, updated-only date, truncation whitespace)
 - [x] Contract coverage, input hardening, Schemathesis, CI; merged via PR #2 (2026-10-05, `7531460`), server back on `main`
-- [ ] Triage the remaining mutmut survivors by impact before finishing stage 2 (2026-10-05 run: 347 survived, 79%; `queue`/`swipes`/`saved`/`feed_health`/`safe_fetch`/`extraction` and the 2026-10-04 state of `api` triaged in findings.md; `models` 4, `feeds` 1, `text` 4 accepted 2026-10-05; open: `fetcher` 101, plus whatever `ebcbb3c` added to `api` (115), `config` 21, `logs` 8, `timestamps` 1)
+- [x] Triage the remaining mutmut survivors by impact before finishing stage 2 (2026-10-05/06, policy in findings.md): 347 survivors at the start (79%); `models`, `feeds`, `text` accepted; `fetcher` 10 tests; `api`, `config`, `logs`, `timestamps` 7 tests; everything else accepted with a reason per category. Modules triaged 2026-10-04 (`queue`, `swipes`, `saved`, `feed_health`, `safe_fetch`, `extraction`) unchanged since
 - [x] `GET /queue` + `POST /swipes` (2026-10-04): `queue.py` (round-robin), `swipes.py` (idempotent batch, item flag, saved on save), per-request transaction; smoke-tested on a copy of the dev DB
 - [x] Log every `422` on `POST /swipes` (swipe_ids, errors, body) via an exception handler (2026-10-04)
 - [x] Architecture diagrams (2026-10-04): `docs/architecture.md`, Mermaid diagrams (18 by 2026-10-04, incl. read endpoints, extraction job, SSRF guard), validated with Mermaid 10 and 11

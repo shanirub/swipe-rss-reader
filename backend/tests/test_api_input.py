@@ -238,3 +238,67 @@ def test_logged_body_of_a_rejected_batch_is_capped(client, caplog, monkeypatch):
     assert "truncated" in message and "x" * 100 not in message
     assert "not-a-uuid" in message and '"uuid_parsing"' in message  # swipe_ids and errors in full
     assert len(message) < 2000  # errors don't repeat the input (Pydantic puts it into every error)
+
+
+# --- gaps found by mutmut (2026-10-06) ---
+
+
+def test_json_content_type_with_charset_is_accepted(client):
+    # OkHttp typically sends "application/json; charset=utf-8" for string bodies.
+    body = json.dumps({"swipes": [valid_swipe()]}).encode()
+    response = client.post("/swipes", content=body, headers={"Content-Type": "application/json; charset=utf-8"})
+    assert response.status_code == 200
+
+
+def test_body_in_several_asgi_messages_is_read_whole(engine, db_path):
+    # uvicorn hands a body over in pieces as it arrives from the socket; TestClient always in one.
+    body = json.dumps({"swipes": [valid_swipe()]}).encode()
+    pieces = [body[:40], body[40:120], body[120:]]
+    status, pulled = run_asgi(
+        make_app(db_path), body_chunks=pieces, headers=[(b"authorization", f"Bearer {TOKEN}".encode())]
+    )
+    assert (status, pulled) == (200, len(body))
+
+
+def test_many_small_asgi_messages_over_the_limit_are_413(engine, db_path, monkeypatch):
+    # The limit applies to the sum of all pieces, not to each piece.
+    monkeypatch.setattr(api, "MAX_BODY_BYTES", 100)
+    status, pulled = run_asgi(
+        make_app(db_path), body_chunks=[b" " * 30] * 5, headers=[(b"authorization", f"Bearer {TOKEN}".encode())]
+    )
+    assert status == 413 and pulled == 120  # stopped at the first piece over the limit
+
+
+def _assert_spec_error(response, status_code):
+    assert response.status_code == status_code
+    assert response.headers["content-type"] == "application/json"
+    assert response.headers["content-length"] == str(len(response.content))
+    assert isinstance(Error.model_validate(response.json()).detail, str)
+
+
+def test_middleware_errors_are_well_formed(engine, db_path, monkeypatch):
+    # 401 and 413 are written by our middleware, not by FastAPI, so their format is ours to keep.
+    monkeypatch.setattr(api, "MAX_BODY_BYTES", 100)
+    _assert_spec_error(TestClient(make_app(db_path)).get("/queue"), 401)
+    client = TestClient(make_app(db_path), headers=AUTH)
+    _assert_spec_error(client.post("/swipes", content=b" " * 101, headers=JSON), 413)  # Content-Length
+
+    def chunks():
+        yield b" " * 101
+
+    _assert_spec_error(client.post("/swipes", content=chunks(), headers=JSON), 413)  # while streaming
+
+
+@pytest.mark.parametrize(
+    ("swipe", "headers"),
+    [
+        (valid_swipe(), {"Content-Type": "text/plain"}),  # rejected before JSON parsing
+        (valid_swipe(swiped_at="3000-01-01T00:00:00Z"), JSON),  # rejected after model validation
+    ],
+)
+def test_rejections_on_every_path_keep_the_dead_letter_trail(client, caplog, swipe, headers):
+    with caplog.at_level(logging.WARNING, logger="swipe_rss.api"):
+        response = client.post("/swipes", content=json.dumps({"swipes": [swipe]}).encode(), headers=headers)
+    assert response.status_code == 422
+    [message] = [r.getMessage() for r in caplog.records]
+    assert swipe["swipe_id"] in message

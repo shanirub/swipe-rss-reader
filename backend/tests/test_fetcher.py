@@ -1,5 +1,10 @@
 import asyncio
+import json
+import threading
+import time
 from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import httpx
 import pytest
@@ -257,3 +262,141 @@ def test_date_outside_the_api_range_becomes_null(date):
     )
     [item] = fetcher.parse_entries(Feed(id="a", url="https://a.example/feed"), atom, {})
     assert item.published_at is None
+
+
+def test_entry_without_title_element_is_skipped_and_later_entries_kept():
+    # feedparser omits the "title" key entirely when there is no <title> element.
+    body = (
+        b'<?xml version="1.0"?><rss version="2.0"><channel><title>t</title>'
+        b"<item><link>https://a.example/no-title</link><guid>nt</guid></item>"
+        b"<item><title>After</title><guid>g2</guid></item></channel></rss>"
+    )
+    items = fetcher.parse_entries(Feed(id="a", url="https://a.example/feed"), body, {})
+    assert [i.headline for i in items] == ["After"]
+
+
+def test_new_entry_after_an_already_seen_one_is_stored(engine):
+    run(engine, feeds_file("a"), lambda req: httpx.Response(200, content=rss(RECENT)))
+    newer = {**RECENT, "guid": "g2", "link": "https://a.example/newer", "title": "Newer"}
+    summary = run(engine, feeds_file("a"), lambda req: httpx.Response(200, content=rss(RECENT, newer)))
+    assert summary.new_items == 1
+    assert count(engine, Item) == 2
+
+
+def test_author_and_tags_are_stored(engine):
+    entry = {**RECENT, "author": "Jane Doe", "categories": ["privacy", "crypto"]}
+    run(engine, feeds_file("a"), lambda req: httpx.Response(200, content=rss(entry)))
+    with Session(engine) as s:
+        item = s.scalars(select(Item)).one()
+    assert item.author == "Jane Doe"
+    assert json.loads(item.tags) == ["privacy", "crypto"]
+
+
+def test_response_in_several_chunks_is_read_whole(engine):
+    body = rss(RECENT, UNDATED)
+
+    async def chunks():
+        for i in range(0, len(body), 64):
+            yield body[i : i + 64]
+
+    summary = run(engine, feeds_file("a"), lambda req: httpx.Response(200, content=chunks()))
+    assert summary.failed == 0 and summary.new_items == 2
+
+
+def test_charset_from_the_http_header_is_used(engine):
+    # Without the response headers feedparser guesses the encoding and stores mojibake.
+    body = rss({"title": "שלום עולם", "guid": "he1"}).decode().encode("windows-1255")
+    headers = {"Content-Type": "application/rss+xml; charset=windows-1255"}
+    run(engine, feeds_file("a"), lambda req: httpx.Response(200, content=body, headers=headers))
+    with Session(engine) as s:
+        assert s.scalars(select(Item.headline)).all() == ["שלום עולם"]
+
+
+def test_unexpected_error_in_one_feed_is_recorded_and_others_continue(engine, monkeypatch):
+    real_parse = fetcher.parse_entries
+
+    def parse(feed, body, headers):
+        if feed.id == "bad":
+            raise RuntimeError("boom")
+        return real_parse(feed, body, headers)
+
+    monkeypatch.setattr(fetcher, "parse_entries", parse)
+    summary = run(engine, feeds_file("bad", "good"), lambda req: httpx.Response(200, content=rss(RECENT)))
+
+    assert summary.failed == 1 and summary.new_items == 1
+    bad = status(engine, "bad")
+    assert bad.last_error == "RuntimeError: boom" and bad.consecutive_failures == 1
+
+
+def test_entry_without_guid_or_link_is_keyed_by_title_and_date():
+    feed = Feed(id="a", url="https://a.example/feed")
+    [item] = fetcher.parse_entries(feed, rss({"title": "T", "published": NOW}), {})
+    assert item.dedup_key == dedup_key(guid=None, link=None, title="T", published=format_datetime(NOW))
+
+
+def test_dedup_link_override_ignores_the_guid():
+    feed = Feed(id="a", url="https://a.example/feed", dedup="link")
+    [item] = fetcher.parse_entries(feed, rss({"title": "T", "guid": "g", "link": "https://a.example/x"}), {})
+    assert item.dedup_key == dedup_key(guid="g", link="https://a.example/x", title="T", published=None, mode="link")
+    assert item.dedup_key.startswith("link:")
+
+
+def test_last_modified_is_stored_and_sent_back(engine):
+    lm = "Mon, 05 Oct 2026 10:00:00 GMT"
+    seen = []
+
+    def handler(request):
+        seen.append(request.headers.get("if-modified-since"))
+        if request.headers.get("if-modified-since") == lm:
+            return httpx.Response(304)
+        return httpx.Response(200, content=rss(RECENT), headers={"Last-Modified": lm})
+
+    for _ in range(3):  # 200, then 304 twice: a 304 must keep the stored value
+        run(engine, feeds_file("a"), handler)
+    assert seen == [None, lm, lm]
+    assert status(engine, "a").last_modified == lm
+
+
+def test_feed_status_after_failure_and_recovery(engine):
+    responses = iter([httpx.Response(500), httpx.Response(200, content=rss(RECENT))])
+    run(engine, feeds_file("a"), lambda req: next(responses))
+    failed = status(engine, "a")
+    assert failed.last_attempt_at is not None and failed.consecutive_failures == 1
+
+    run(engine, feeds_file("a"), lambda req: next(responses))
+    ok = status(engine, "a")
+    assert ok.consecutive_failures == 0 and ok.last_error is None
+    assert ok.last_attempt_at >= failed.last_attempt_at and ok.last_success_at == ok.last_attempt_at
+
+
+class _HangingHandler(BaseHTTPRequestHandler):
+    release = threading.Event()
+
+    def do_GET(self):
+        self.release.wait(3)  # far longer than the patched timeout; released at teardown
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(rss(RECENT))
+
+    def log_message(self, *args):
+        pass
+
+
+def test_hanging_feed_times_out(engine, monkeypatch):
+    # Without a timeout one hanging server would stall the whole run, and with it all fetching.
+    monkeypatch.setattr(fetcher, "TIMEOUT", httpx.Timeout(0.3))
+    _HangingHandler.release.clear()
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), _HangingHandler)
+    httpd.daemon_threads, httpd.block_on_close = True, False
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    ff = FeedsFile.model_validate({"feeds": [{"id": "slow", "url": f"http://127.0.0.1:{httpd.server_port}/feed"}]})
+    try:
+        start = time.monotonic()
+        summary = asyncio.run(fetcher.run_fetch(engine, ff))
+        elapsed = time.monotonic() - start
+    finally:
+        _HangingHandler.release.set()
+        httpd.shutdown()
+        httpd.server_close()
+    assert summary.failed == 1 and elapsed < 2
+    assert "Timeout" in status(engine, "slow").last_error

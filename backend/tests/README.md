@@ -182,11 +182,15 @@ Grouped by the part of the system they test.
 **`test_fetcher.py`**: the fetch run end to end.
 - Age filter and normalization
 - A rerun inserts nothing; tombstones block re-insertion after pruning; the first version wins
+- A new entry after an already-seen one is still stored
 - The same article in two feeds is kept twice
-- Conditional GET (304)
-- Failing, unparseable and oversized feeds are recorded without stopping the run
+- Conditional GET (304) with ETag and with Last-Modified; a 304 keeps the stored validators
+- Failing, unparseable, oversized, hanging (timeout) and unexpectedly crashing feeds are recorded without stopping the run; feed status after a failure and after recovery
+- A response in several chunks is read whole; the charset from the HTTP header is used (Hebrew windows-1255)
 - Redirects are followed; requests send the reader's User-Agent
-- A missing or blank author becomes null
+- An entry without a `<title>` element is skipped, later entries kept
+- Author and tags reach the database; a missing or blank author becomes null
+- Dedup inputs: an entry without GUID or link is keyed by title and date; the `dedup = "link"` override ignores the GUID
 - An Atom entry with only an updated date gets that date
 - A date outside the API's timestamp range becomes null
 - Card limits: fetcher limits ≤ the API spec's limits, an oversized entry becomes a valid `Card`, and a dropped link still determines the item's key
@@ -243,13 +247,15 @@ Grouped by the part of the system they test.
   - not saved → 404; malformed `feed_id` or `item_key` → 422
 
 **`test_api_input.py`**: input that never reaches the models, and the order of the checks.
-- Malformed JSON, missing or wrong content type, empty body, invalid UTF-8 → 422, not 500
+- Malformed JSON, missing or wrong content type, empty body, invalid UTF-8 → 422, not 500; `application/json; charset=utf-8` accepted
 - Strict JSON types: a number as a timestamp or a string as an integer → 422; `180.0` counts as an integer
 - Integers beyond the spec's maximum → 422, not a 500 from SQLite
 - Timestamps outside 1970 ≤ t < 3000 → 422 for each of the three fields (incl. year 0 and year 10000 after UTC conversion); the boundaries are accepted
 - Body over the limit → 413, for Content-Length and chunked; the exact boundary is allowed
+- A body in several ASGI messages (as uvicorn delivers it) is read whole; many small messages over the limit → 413 (TestClient always delivers one message, so these use `run_asgi`)
+- Our middleware's 401 and 413 are well-formed: JSON content type, correct Content-Length, the spec's `Error` body
 - Without the token the body is not read at all: a broken body gets 401 and isn't logged, an oversized one 401 (not 413)
-- A rejected batch is logged with a capped body, and errors without repeated input
+- A rejected batch is logged with a capped body, and errors without repeated input; the swipe IDs are logged on every rejection path (wrong content type, timestamp range)
 
 **`test_contract.py`**: the spec and the app match.
 - The app's (method, path) set equals the spec's; every spec operation documents responses
@@ -271,7 +277,11 @@ Grouped by the part of the system they test.
 **`test_logs.py`**: logging setup.
 - `SWIPE_RSS_LOG_LEVEL` applies to the app and uvicorn; an unknown level fails at startup
 - Health checks are dropped from the access log; other requests are kept
-- The filter is installed once
+- The filter is installed once, on uvicorn's real access logger
+
+**`test_config.py`**: runtime settings.
+- Every setting comes from its environment variable (DB path, feeds path, token, log level)
+- An empty token counts as unset
 
 ### Extraction
 
