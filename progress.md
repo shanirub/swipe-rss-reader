@@ -340,6 +340,23 @@
 - `.md` recheck before commit: reboot table "Where am I?" was stale since stage 2 (rewritten), `task_plan.md` next step and Phase 4 backup line. Committed on `main`; branch `stage5-android` created for stage 5.
 - Files: `task_plan.md`, `progress.md`
 
+## Session: 2026-10-07 to 2026-10-10
+
+### Stage 5: Android orientation and first decisions
+
+- **Status:** complete (design questions; committed 2026-10-10 on `stage5-android`)
+- `android/` layout with `.gitkeep`s and `android/README.md`; `.gitignore` covers `android/.kotlin/` and every module's `build/`; root `README.md` points to `android/README.md`.
+- The user is new to Android: explained the stack one layer per message with backend analogies (build: Gradle/AGP/APK/signing/adb/SDK/JDK; Kotlin + Compose; lifecycle, ViewModel, Repository, StateFlow; background work; networking: OkHttp/interceptor, Retrofit, kotlinx.serialization; Room: entity/DAO/migrations/exported schema; testing: JVM vs instrumented tests). User feedback: explain slowly (memory `android-explain-slowly`).
+- Toolchain checked after the user installed Android Studio (findings.md, current state).
+- Decided with the user: **no WorkManager**: swipe sync only while the app is in the foreground (the user called background sync overkill; payload estimate in findings.md); `PROJECT_PLAN.md` §3 Android + §5, task list, diagram 16 updated. **`minSdk` 36** (Pixel 10a, Android 16). **`applicationId` `io.github.shanirub.swiperss`**; package folders created under `main/java`, `test/java`, `androidTest/java`.
+- User asked about `/ide`: needs the Claude Code plugin inside the IDE (none installed); the user wants to try the plugin in a new session.
+- 2026-10-09 (new session, Claude Code plugin in Android Studio): **Kotlin API models hand-written** + Android conformance test (user); `PROJECT_PLAN.md` §3 Android, task list, decisions row, findings updated.
+- **Android CI job: yes** (user): own workflow `android.yml`, path-filtered (`android/**`, `api/openapi.yaml`), added after the Gradle setup; `main` has no branch protection (checked), so skipped runs block nothing.
+- Open: wireless debugging, which adb to keep. Next (user): Gradle setup first, wireless debugging when an APK exists.
+- `.md` recheck: `PROJECT_PLAN.md` "live swiping sends one" (stale with debounced sync), `task_plan.md` next step / current phase / recheck list (+ `android/README.md`) / decisions row, `findings.md` toolchain + stage 5 research, this entry, reboot table.
+- `.md` recheck 2026-10-10 (before the commit): `PROJECT_PLAN.md` conformance wording said "absent optional fields" (the API has none: every field is required, nullable), workflow line now mentions CI; `task_plan.md` next-step order; `findings.md` resources (+ `android/README.md`).
+- Files: `.gitignore`, `README.md`, `android/**` (new), `PROJECT_PLAN.md`, `docs/architecture.md`, plan files
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -459,8 +476,8 @@
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Stages 0–4 complete and deployed (server on `main` at `9d75d91`: fetch, extract, prune hourly :07, backup hourly :37); `main` at `cc5ca62` (docs since). Now on branch `stage5-android`: Android MVP design questions, one at a time |
+| Where am I? | Stages 0–4 complete and deployed (server on `main` at `9d75d91`: fetch, extract, prune hourly :07, backup hourly :37); `main` at `cc5ca62` (docs since). On branch `stage5-android`: stage 5 design questions done and committed (see the 2026-10-07 to 10 entry); next: Gradle project setup, then the Android CI workflow, then wireless debugging |
 | Where am I going? | 5 Android MVP → 6 read-later view → 7 ranking → 8 iterate → 9 off-server backups |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |
-| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard; `api` Compose service; first stage 2 deploy (API live over the tailnet); merge to `main` (PR #1); contract coverage and must-fail tests; Schemathesis; CI workflow; PR #2 merged; triage policy; README rewrite; triage tests (PR #3); retention design; pruning job test-first; on-server backups (stage 4) |
+| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard; `api` Compose service; first stage 2 deploy (API live over the tailnet); merge to `main` (PR #1); contract coverage and must-fail tests; Schemathesis; CI workflow; PR #2 merged; triage policy; README rewrite; triage tests (PR #3); retention design; pruning job test-first; on-server backups (stage 4); stage 5 start: `android/` layout, Android stack explained, sync without WorkManager, `minSdk` 36, `applicationId`, hand-written Kotlin models, Android CI decided |

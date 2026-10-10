@@ -583,14 +583,14 @@ stateDiagram-v2
 
 ## 16. Phone swipe sync (sequence, planned)
 
-How the Android app (stage 5) is designed to use `POST /swipes`, including the dead-letter fallback.
+How the Android app (stage 5) is designed to use `POST /swipes`, including the dead-letter fallback. Sync runs only while the app is in the foreground (on app start/resume and a few seconds after the last swipe); there is no background job.
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant ui as Swipe screen
     participant room as Room queue (phone)
-    participant work as WorkManager sync
+    participant work as Sync (foreground coroutine)
     participant api as POST /swipes
 
     ui->>room: store swipe with a new UUID (works offline)
@@ -600,7 +600,7 @@ sequenceDiagram
         api-->>work: stored / duplicates
         work->>room: delete sent swipes
     else network error or timeout
-        work->>work: retry the same batch later (idempotent)
+        work->>work: stop; resend at the next trigger (idempotent)
     else 422 (some swipe invalid)
         loop each swipe of the batch, one by one
             work->>api: batch of 1

@@ -22,8 +22,8 @@ backend/mutants/
 
 # Android
 android/.gradle/
-android/build/
-android/app/build/
+android/.kotlin/
+android/**/build/
 android/.idea/
 *.apk
 

@@ -78,7 +78,7 @@ All networking happens over **Tailscale** (WireGuard-based private mesh VPN). No
 - The repo is **public**, so the server clones and pulls **anonymously over HTTPS** (no deploy key, no credentials on the server). If the repo ever goes private, switch to a read-only deploy key.
 - Deploy: `git pull && docker compose up -d --build`. Claude may run exactly this plus read-only checks over Tailscale SSH, after the owner approves each deploy; all other server changes are done by the owner. Dependencies are installed inside the image build, pinned by `uv.lock`. The image does not inherit the checkout's file modes (`COPY --chmod=a+rX`), since containers run as a non-root user and a checkout under a strict umask would otherwise break them. Later option: build images in CI, push to GHCR, and have the server pull images only.
 - **Secrets never in git:** `.env` (commit `.env.example`), rclone/restic config and passphrase, Android signing keystore, `local.properties` (holds the API token).
-- The Android app is built on the desktop; the server ignores `android/`.
+- The Android app is built on the desktop (and in CI); the server ignores `android/`.
 
 ### Backend
 
@@ -163,7 +163,7 @@ Rule: **item properties are captured at swipe time** (items are pruned, so anyth
 ### Swipe recording
 
 - **Idempotency:** the phone generates a `swipe_id` (UUIDv4) at swipe time and stores it with the swipe in the Room queue. Server: `swipe_id` is the primary key; inserts use `ON CONFLICT(swipe_id) DO NOTHING`; the response is success whether new or duplicate, so retries are always safe.
-- **Endpoint:** a single batch `POST /swipes` accepting 1..N swipes (live swiping sends one, offline sync sends the backlog). Transport failures (no response, timeout) are resolved by resending the whole batch; validation failures follow "Invalid swipes" below.
+- **Endpoint:** a single batch `POST /swipes` accepting 1..N swipes (the phone sends whatever is pending: one swipe, or a backlog after time offline). Transport failures (no response, timeout) are resolved by resending the whole batch; validation failures follow "Invalid swipes" below.
 - **Invalid swipes (decided 2026-10-03):** the server validates the batch as a whole (`422` rejects all of it). On `422`, the phone resends that batch one swipe at a time; a swipe that fails alone moves to a local **dead-letter** table (kept, not resent automatically), so one bad swipe never blocks the queue. Alternatives considered: per-swipe results in a `200` (loose request schema), one swipe per request (many requests).
 - **Dead letters are visible and recoverable:**
   - *Stage 2:* the server logs every `422` on `POST /swipes` with the `swipe_id`s, the validation errors and the request body (own data, single user; authenticated requests only; body capped at 10,000 characters, since the phone's single-swipe resends are logged whole), so rejections show up in `docker compose logs` even if the phone never reports them.
@@ -231,12 +231,15 @@ Two layers (decided 2026-10-06):
 - **Kotlin** + **Jetpack Compose**.
 - **Retrofit + OkHttp** (HTTP), **kotlinx.serialization** (JSON).
 - **Room** for the local cache and an offline queue of unsent swipes.
-- **WorkManager** syncs queued swipes when the network returns.
+- **Swipe sync only while the app is in the foreground** (decided 2026-10-08): pending swipes are sent when the app comes to the foreground and a few seconds after the last swipe (debounced), from a coroutine tied to the screen's lifecycle. On failure (no network, Tailscale off, `5xx`) nothing is done: the swipes stay in Room until the next trigger. A request cancelled by leaving the app is harmless (swipes are deleted only after a `200`; `swipe_id` makes resends safe). Rejected: **WorkManager** background sync. It adds no durability (Room provides that) and only shortens the delay until the server sees swipes, which doesn't matter for one user (ranking uses accumulated history); it would cost a dependency, a Worker, constraint/backoff setup and its own tests. Trade-off: swipes from a session that ends offline reach the server at the next app start.
 - **Coil** for images (if feeds provide thumbnails).
 - **Custom Tabs** for opening articles.
 - Dependency injection (Hilt) skipped for the MVP.
 - **Distribution:** sideloaded release APK signed with a personal key, installed via adb (wireless over Tailscale) or downloaded from the server. Increment `versionCode` each release. **Back up the keystore.** Losing it forces an uninstall to update.
-- **minSdk:** set to the owner's phone Android version.
+- **minSdk:** set to the owner's phone Android version: **36** (Pixel 10a on Android 16, decided 2026-10-09).
+- **applicationId and package:** **`io.github.shanirub.swiperss`** (decided 2026-10-09). Permanent: Android treats a different id as a different app, so changing it means uninstalling and losing local data (unsent swipes).
+- **API models are hand-written** (decided 2026-10-09): `@Serializable` Kotlin data classes for the schemas the app uses, not generated. The spec is small (17 schemas, about 10 needed in stage 5) and changes rarely; a generator would add a build tool whose OpenAPI 3.1 nullable support is unverified. Drift is caught by an **Android conformance test** (JVM unit test, Key Question 11 h): JSON the app sends (`SwipeBatch`) is validated against the spec's schemas, and the app's classes must decode spec-valid responses (including `null` in every nullable field). Details are settled when the API client is written.
+- **Android CI** (decided 2026-10-09): one GitHub Actions job builds the app and runs the JVM unit tests (no emulator), in its own workflow file (`.github/workflows/android.yml`) triggered only by changes to `android/**`, `api/openapi.yaml` (the conformance test reads it) or the workflow itself, so backend-only pushes don't wait for a Gradle build. Added right after the Gradle project setup. `main` has no branch protection, so a skipped workflow never blocks a merge.
 - **kotlinx.serialization must send nulls and defaults** (`encodeDefaults = true`, or no default values on API fields): by default it omits fields equal to their default, which would drop required-but-nullable fields and get swipes rejected with `422`. Verify the current default when writing the client.
 
 ### Notifications
@@ -268,7 +271,7 @@ Stages are **vertical slices**: each stage adds the tables it needs via a new Al
 2. **API:** OpenAPI contract first, then `swipes` / `saved` tables (new migration) and endpoints for: swipe queue, recording swipes, saved list, extracted content, per-feed status. Includes the `api` Compose service (published on `127.0.0.1:8001`) so the stage is testable with `curl` over the tailnet; stage 4 completes the rest of the Compose setup.
 3. **Retention:** pruning job (unswiped and swiped items, saved items; tombstones are kept). Comes after the API because its rules depend on swipe and save state.
 4. **Deployment & on-server backups:** full Compose setup, hourly snapshots outside the Docker volume (layer 1, see Backups).
-5. **Android MVP:** swipe cards against the API, Room cache, offline swipe queue with WorkManager sync (single-swipe fallback on `422`, dead-letter store with retry on app update, debug screen with retry/export), feed-status screen.
+5. **Android MVP:** swipe cards against the API, Room cache, offline swipe queue synced while the app is in the foreground (single-swipe fallback on `422`, dead-letter store with retry on app update, debug screen with retry/export), feed-status screen.
 6. **Read-later view:** saved list, extracted-content reader, Custom Tabs fallback, permanent log of reads.
 7. **Ranking:** TF-IDF + logistic regression on the swipe log, queue ordering by predicted interest, exploration slice.
 8. **Iterate:** embeddings, per-feed retention tuning, undo, UX polish; lenient dead-letter upload if needed.

@@ -64,7 +64,7 @@ The three tracking files (`task_plan.md`, `progress.md`, `findings.md`) and the 
     └── tests/               pytest suite, see backend/tests/README.md
 ```
 
-An `android/` directory follows in stage 5.
+`android/` holds the Android app (stage 5, being set up; see [`android/README.md`](android/README.md)).
 
 ## Development
 

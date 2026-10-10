@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Stage 5, the Android MVP, on branch `stage5-android` (design questions first, one at a time).
+Stage 5 on branch `stage5-android`. Design questions done (API models hand-written + conformance test; Android CI job yes, 2026-10-09). Next (user's order, 2026-10-10): the Gradle project setup, then the Android CI workflow; wireless debugging (phone ↔ desktop adb) when the first APK exists.
 
 ## Current Phase
 
-Phase 5 (Android MVP) in progress: design questions; Phases 0–4 complete (server at `9d75d91`)
+Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicationId`, API models, CI decided); Phases 0–4 complete (server at `9d75d91`)
 
 ## Phases
 
@@ -102,8 +102,23 @@ Phase 5 (Android MVP) in progress: design questions; Phases 0–4 complete (serv
 
 ### Phase 5: Android MVP (stage 5)
 
+- [x] `android/` layout + `android/README.md`; `.gitignore` covers `.kotlin/` and every module's `build/` (2026-10-06)
+- [x] Toolchain: Android Studio 2026.2.1 via JetBrains Toolbox (bundled JDK 25, SDK platform 37, emulator AVD API 37); phone Pixel 10a on Android 16 → `minSdk` 36 (2026-10-09)
+- [ ] Wireless debugging (phone ↔ desktop adb)
+- [x] Decide: `applicationId` / package name (permanent: a new id is a new app): `io.github.shanirub.swiperss` (2026-10-09)
+- [x] Decide: Kotlin API models: hand-written `@Serializable` classes + Android conformance test, no generator (2026-10-09)
+- [x] Decide: Android CI job (build + JVM tests): yes, own workflow, path-filtered (2026-10-09)
+- [ ] Gradle project: wrapper, version catalog, Compose, kotlinx.serialization, Retrofit + OkHttp, Room, Custom Tabs; `versionCode`
+- [ ] Android CI: `.github/workflows/android.yml` (build + JVM tests; paths `android/**`, `api/openapi.yaml`, the workflow file); check whether GitHub's Ubuntu runner image has the Android SDK preinstalled
+- [ ] Token + base URL from `local.properties` → `BuildConfig`; OkHttp interceptor adds the bearer token
+- [ ] API client + `MockWebServer` tests (incl. Android-side conformance, Key Question 11 h)
 - [ ] kotlinx.serialization sends nulls/defaults (`encodeDefaults = true`), so required-but-nullable fields are never dropped
-- [ ] Swipe sync: single-swipe fallback on `422`; dead-letter store (with `app_version` + error), retry once on new app version, debug screen with retry/export
+- [ ] Room schema: cached cards, pending swipes, dead letters; exported schema + migrations
+- [ ] Swipe screen: `/queue`, dedup by `(feed_id, item_key)`, card stack, gestures (left never, right save, up read now), `time_to_swipe_ms`, `tz_offset_minutes`; read now → Custom Tabs
+- [ ] Swipe sync (foreground only: on app start/resume + debounced after swiping; failure = wait for next trigger): single-swipe fallback on `422`; dead-letter store (with `app_version` + error), retry once on new app version, debug screen with retry/export
+- [ ] Feed-status screen (`GET /feeds`: last success, last new item)
+- [ ] Release signing: keystore (+ backup), signed APK, sideload with `adb` over Tailscale
+- [ ] Docs: READMEs, diagram 16 (phone sync) from planned to real
 - **Status:** in_progress
 
 ### Phase 6: Read-later view (stage 6)
@@ -222,6 +237,10 @@ Phase 5 (Android MVP) in progress: design questions; Phases 0–4 complete (serv
 | Pruning job hourly at :07, one transaction, no VACUUM, `--dry-run`, built test-first (2026-10-06, user) | ~3 rows per run; freed pages are reused; look before the first real delete |
 | `swipes` append-only by triggers (migration `0004`) + survival test + curated mutant (2026-10-06, user) | The training data can't be refetched; the trigger also covers code and manual sessions outside our tests. A table rebuild drops triggers, so the tests check them at head |
 | Backups in two layers (2026-10-06, user): on-server snapshots now, off-server pinned as stage 9 | Layer 1 covers bugs, bad migrations and volume loss at no cost; the off-server destination waits for the user's look at Hetzner's options |
+| Swipe sync only while the app is in the foreground, no WorkManager (2026-10-08, user) | Room already makes swipes durable; background sync would only shorten the delay until the server sees them, which one user doesn't need. Details in `PROJECT_PLAN.md` §3 Android |
+| `minSdk` 36 and `applicationId` `io.github.shanirub.swiperss` (2026-10-09, user) | The owner's Pixel 10a runs Android 16 (API 36); the id is permanent (a new id is a new app), reversed GitHub user name |
+| Kotlin API models hand-written + conformance test, no generator (2026-10-09, user) | ~10 small classes for stage 5; a generator adds a build tool with unverified OpenAPI 3.1 nullable support; the conformance test catches drift. Details in `PROJECT_PLAN.md` §3 Android |
+| Android CI job: build + JVM tests, own path-filtered workflow (2026-10-09, user) | Cheap; keeps "merge on green checks" meaningful for Android PRs; path filter spares backend-only pushes the Gradle build |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 
 ## Errors Encountered
@@ -258,6 +277,6 @@ Phase 5 (Android MVP) in progress: design questions; Phases 0–4 complete (serv
 - Update phase status as work progresses: `pending` → `in_progress` → `complete`.
 - Re-read `PROJECT_PLAN.md` before each phase; don't re-open settled decisions.
 - Dev loop: edit on desktop → `cd backend && uv run ruff check . && uv run ruff format --check . && uv run pytest` → when guard tests or the code they protect changed: `uv run python scripts/mutants.py` → optional local `docker compose up --build` → **recheck all `.md` files** → commit + push → server `cd ~/swipe-rss-reader && git pull && docker compose up -d --build`.
-- **Mandatory before every commit (user rule, 2026-10-03): recheck all maintained `.md` files for stale or missing data**: `PROJECT_PLAN.md`, `task_plan.md`, `progress.md`, `findings.md`, `README.md`, `backend/tests/README.md`, `docs/architecture.md` (diagrams must match the code flow). Read them in full, compare with what changed, fix, then commit. It catches something nearly every time.
+- **Mandatory before every commit (user rule, 2026-10-03): recheck all maintained `.md` files for stale or missing data**: `PROJECT_PLAN.md`, `task_plan.md`, `progress.md`, `findings.md`, `README.md`, `backend/tests/README.md`, `android/README.md`, `docs/architecture.md` (diagrams must match the code flow). Read them in full, compare with what changed, fix, then commit. It catches something nearly every time.
 - Deploy: Claude runs `cd ~/swipe-rss-reader && git pull && docker compose up -d --build` over Tailscale SSH **only after the user approves that deploy**, then read-only checks (`docker compose ps`, logs, read-only DB queries). Never edit files in the server checkout. Root, Tailscale and system changes go to the user. Note: `srub` is in group `docker` (root-equivalent).
 - Server facts: RSS API URL `https://my-first-server.porcupine-celsius.ts.net:8443` → `127.0.0.1:8001` (`api` container, live since 2026-10-04). DB in named volume `swipe-rss-reader_data` at `/data/swipe_rss.db`.
