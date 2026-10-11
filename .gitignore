@@ -2,6 +2,7 @@
 .env
 !.env.example
 local.properties
+secrets.properties
 *.jks
 *.keystore
 rclone.conf

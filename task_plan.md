@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Stage 5 on branch `stage5-android`. Design questions done (API models hand-written + conformance test; Android CI job yes, 2026-10-09). Gradle project setup done, Android CI workflow green on GitHub, wireless debugging works and the app ran on the Pixel (2026-10-11). Next: token + base URL from `local.properties` → `BuildConfig`, then the API client.
+Stage 5 on branch `stage5-android`. Design questions done (API models hand-written + conformance test; Android CI job yes, 2026-10-09). Gradle project setup done, Android CI workflow green on GitHub, wireless debugging works and the app ran on the Pixel (2026-10-11). Token + base URL → `BuildConfig` done (2026-10-11; the user created `android/secrets.properties`, the app runs with it). Next: the API client (OkHttp interceptor adds the token).
 
 ## Current Phase
 
-Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicationId`, API models, CI decided), Gradle project set up, Android CI workflow green, app runs on the phone over wireless debugging; Phases 0–4 complete (server at `9d75d91`)
+Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicationId`, API models, CI decided), Gradle project set up, Android CI workflow green, app runs on the phone over wireless debugging, token + base URL in `BuildConfig`; Phases 0–4 complete (server at `9d75d91`)
 
 ## Phases
 
@@ -110,8 +110,8 @@ Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicatio
 - [x] Decide: Android CI job (build + JVM tests): yes, own workflow, path-filtered (2026-10-09)
 - [x] Gradle project (2026-10-10, user): created with Android Studio's "Empty Activity" wizard (versions that fit together, wrapper included), then reviewed and adjusted; ends with a minimal app that builds, shows one screen and passes one JVM test; `versionCode`. Libraries (kotlinx.serialization, Retrofit + OkHttp, Room, Custom Tabs) are added with the code that first uses them, each tested right away. Done 2026-10-11: versions updated (Gradle 9.8.1, Kotlin 2.4.21, …), instrumented-test setup dropped, Android backup off, unused `colors.xml` deleted, `gradle-daemon-jvm.properties` tracked, `android/README.md` rewritten; builds and passes the JVM test; the screen ran on the Pixel on 2026-10-11 (wireless debugging)
 - [x] Android CI: `.github/workflows/android.yml` (build + JVM tests; paths `android/**`, `api/openapi.yaml`, the workflow file); runner image has the Android SDK (platform 37) and JDK 25 preinstalled (2026-10-11); written and schema-validated; first run on GitHub green (`3442910`, 2026-10-11, build 1m56s, ~2 min total)
-- [ ] Token + base URL from `local.properties` → `BuildConfig`; OkHttp interceptor adds the bearer token
-- [ ] API client + `MockWebServer` tests (incl. Android-side conformance, Key Question 11 h)
+- [x] Token + base URL → `BuildConfig` (2026-10-11): from git-ignored `android/secrets.properties` (template committed), `buildConfig = true`; build fails if missing, token < 32 chars or address not `https://` (checked all three + a valid build); CI writes dummy values; the user created the real file, the app ran on the Pixel with it
+- [ ] API client + `MockWebServer` tests; OkHttp interceptor adds the bearer token (moved here from the `BuildConfig` step: OkHttp comes with its first use) (incl. Android-side conformance, Key Question 11 h)
 - [ ] kotlinx.serialization sends nulls/defaults (`encodeDefaults = true`), so required-but-nullable fields are never dropped
 - [ ] Room schema: cached cards, pending swipes, dead letters; exported schema + migrations
 - [ ] Swipe screen: `/queue`, dedup by `(feed_id, item_key)`, card stack, gestures (left never, right save, up read now), `time_to_swipe_ms`, `tz_offset_minutes`; read now → Custom Tabs
@@ -244,6 +244,7 @@ Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicatio
 | Gradle project from Android Studio's "Empty Activity" wizard, libraries added with the code that first uses them (2026-10-10, user) | Versions that fit together and a wrapper out of the box; reviewed file by file; no unused dependencies |
 | JVM tests only, instrumented-test setup removed; Android backup off (2026-10-11, user) | No emulator in CI; the phone holds only a cache. Details in `PROJECT_PLAN.md` §3 Android |
 | APKs installed with adb over USB or home-Wi-Fi wireless debugging; no install over Tailscale, no download from the server (2026-10-11, user) | The app only changes right after coding at the desk; installing from anywhere is machinery without benefit. Tailscale stays for app → API |
+| App secrets in a separate git-ignored `android/secrets.properties` (+ committed template), not `local.properties`; build fails without them; CI writes dummy values (2026-10-11, user) | Studio generates `local.properties` ("do not modify"); a template documents the format, like `.env.example`. Fail-closed like the server |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 
 ## Errors Encountered

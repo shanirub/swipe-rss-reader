@@ -1,7 +1,31 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
+
+// API token and server address (PROJECT_PLAN.md §3) come from android/secrets.properties, which git
+// ignores; the template is secrets.properties.example. Like the server without its token, the build
+// fails if a value is missing or invalid. Error messages never contain the values.
+val secretsFile = rootProject.layout.projectDirectory.file("secrets.properties")
+val secrets = Properties().apply {
+    providers.fileContents(secretsFile).asText.orNull?.let { load(it.reader()) }
+}
+
+fun secret(key: String, check: (String) -> Boolean, rule: String): String {
+    val value = secrets.getProperty(key)?.trim().orEmpty()
+    if (value.isEmpty() || !check(value)) {
+        throw GradleException(
+            "$key in ${secretsFile.asFile} is missing or invalid ($rule). " +
+                "Template: android/secrets.properties.example"
+        )
+    }
+    return value
+}
+
+// A Kotlin string literal for buildConfigField.
+fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 android {
     namespace = "io.github.shanirub.swiperss"
@@ -15,6 +39,15 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
+
+        buildConfigField(
+            "String", "API_TOKEN",
+            quoted(secret("swiperss.apiToken", { it.length >= 32 }, "at least 32 characters, as on the server")),
+        )
+        buildConfigField(
+            "String", "BASE_URL",
+            quoted(secret("swiperss.baseUrl", { it.startsWith("https://") }, "must start with https://")),
+        )
     }
 
     buildTypes {
@@ -31,6 +64,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true  // off by default in recent AGP; holds API_TOKEN and BASE_URL
     }
 }
 

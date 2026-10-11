@@ -35,5 +35,12 @@ jobs:
           distribution: temurin
           java-version: "25"  # = toolchainVersion in android/gradle/gradle-daemon-jvm.properties
       - uses: gradle/actions/setup-gradle@v6  # caches Gradle downloads, validates the wrapper jar
+      # The build fails without android/secrets.properties. CI gets dummy values: the real token
+      # never leaves the desktop, and this APK is never uploaded anywhere.
+      - name: Write dummy secrets
+        run: |
+          printf '%s\n' \
+            'swiperss.apiToken=ci-dummy-token-not-a-real-secret-0000' \
+            'swiperss.baseUrl=https://example.invalid' > secrets.properties
       - name: Build the debug APK and run the JVM unit tests
         run: ./gradlew assembleDebug testDebugUnitTest
