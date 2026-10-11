@@ -13,3 +13,5 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# secrets.properties (API token, server address) is ignored by the root .gitignore, Secrets section

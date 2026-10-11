@@ -2,7 +2,7 @@
 
 The swipe client for the backend's API (`../api/openapi.yaml`). Stage 5 in [`PROJECT_PLAN.md`](../PROJECT_PLAN.md); design and status in [`task_plan.md`](../task_plan.md).
 
-Current state: the project skeleton from Android Studio's "Empty Activity" wizard (one "Hello Android!" screen, one example JVM test), reviewed and trimmed. Libraries (kotlinx.serialization, Retrofit + OkHttp, Room, Custom Tabs) are added together with the code that first uses them.
+Current state: the project skeleton from Android Studio's "Empty Activity" wizard (one "Hello Android!" screen), reviewed and trimmed, plus the API client (`api/`: Retrofit + OkHttp + kotlinx.serialization, tested against MockWebServer; no screen uses it yet). Further libraries (Room, Custom Tabs) are added together with the code that first uses them.
 
 ## Build
 
@@ -37,10 +37,11 @@ android/
     └── src/
         ├── main/AndroidManifest.xml   app declaration: name, icon, screens, permissions; backup off
         ├── main/java/         Kotlin sources (Android's convention keeps the java/ name),
-        │                      in package io/github/shanirub/swiperss/ (= the applicationId)
+        │                      in package io/github/shanirub/swiperss/ (= the applicationId);
+        │                      api/: API models, Retrofit interface, token interceptor, client
         ├── main/res/          resources: strings, launcher icon (still the default), base theme
         ├── main/keepRules/    rules for R8, the release-build shrinker (empty so far)
-        └── test/java/         local JVM tests (JUnit): fast, no phone; no instrumented
+        └── test/java/         local JVM tests (JUnit; api/: MockWebServer): fast, no phone; no instrumented
                                (on-device) tests for now, see findings.md
 ```
 

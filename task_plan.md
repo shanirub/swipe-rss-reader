@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Stage 5 on branch `stage5-android`. Design questions done (API models hand-written + conformance test; Android CI job yes, 2026-10-09). Gradle project setup done, Android CI workflow green on GitHub, wireless debugging works and the app ran on the Pixel (2026-10-11). Token + base URL → `BuildConfig` done (2026-10-11; the user created `android/secrets.properties`, the app runs with it). Next: the API client (OkHttp interceptor adds the token).
+Stage 5 on branch `stage5-android`. Design questions done (API models hand-written + conformance test; Android CI job yes, 2026-10-09). Gradle project setup done, Android CI workflow green on GitHub, wireless debugging works and the app ran on the Pixel (2026-10-11). Token + base URL → `BuildConfig` done (2026-10-11; the user created `android/secrets.properties`, the app runs with it). API client done (2026-10-11): Retrofit + OkHttp, token interceptor, MockWebServer tests; mutation testing on Android stays by hand (mutflow noted for later). Next: the Android conformance test (own commit).
 
 ## Current Phase
 
-Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicationId`, API models, CI decided), Gradle project set up, Android CI workflow green, app runs on the phone over wireless debugging, token + base URL in `BuildConfig`; Phases 0–4 complete (server at `9d75d91`)
+Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicationId`, API models, CI decided), Gradle project set up, Android CI workflow green, app runs on the phone over wireless debugging, token + base URL in `BuildConfig`, API client; Phases 0–4 complete (server at `9d75d91`)
 
 ## Phases
 
@@ -111,8 +111,9 @@ Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicatio
 - [x] Gradle project (2026-10-10, user): created with Android Studio's "Empty Activity" wizard (versions that fit together, wrapper included), then reviewed and adjusted; ends with a minimal app that builds, shows one screen and passes one JVM test; `versionCode`. Libraries (kotlinx.serialization, Retrofit + OkHttp, Room, Custom Tabs) are added with the code that first uses them, each tested right away. Done 2026-10-11: versions updated (Gradle 9.8.1, Kotlin 2.4.21, …), instrumented-test setup dropped, Android backup off, unused `colors.xml` deleted, `gradle-daemon-jvm.properties` tracked, `android/README.md` rewritten; builds and passes the JVM test; the screen ran on the Pixel on 2026-10-11 (wireless debugging)
 - [x] Android CI: `.github/workflows/android.yml` (build + JVM tests; paths `android/**`, `api/openapi.yaml`, the workflow file); runner image has the Android SDK (platform 37) and JDK 25 preinstalled (2026-10-11); written and schema-validated; first run on GitHub green (`3442910`, 2026-10-11, build 1m56s, ~2 min total)
 - [x] Token + base URL → `BuildConfig` (2026-10-11): from git-ignored `android/secrets.properties` (template committed), `buildConfig = true`; build fails if missing, token < 32 chars or address not `https://` (checked all three + a valid build); CI writes dummy values; the user created the real file, the app ran on the Pixel with it
-- [ ] API client + `MockWebServer` tests; OkHttp interceptor adds the bearer token (moved here from the `BuildConfig` step: OkHttp comes with its first use) (incl. Android-side conformance, Key Question 11 h)
-- [ ] kotlinx.serialization sends nulls/defaults (`encodeDefaults = true`), so required-but-nullable fields are never dropped
+- [x] API client + `MockWebServer` tests (2026-10-11): Retrofit 3.0.0 + its kotlinx.serialization converter, OkHttp 5.5.0, kotlinx-serialization-json 1.11.0; `api/` package: models for `/queue`, `/swipes`, `/feeds` (`/saved` is stage 6), `SwipeRssApi`, `BearerTokenInterceptor` (moved here from the `BuildConfig` step), `ApiClient`; `INTERNET` permission; 6 JVM tests; 4 deliberate breaks each caught by the intended test
+- [x] kotlinx.serialization sends nulls/defaults (2026-10-11): `encodeDefaults = true`, `explicitNulls = true`, no default values in the models; tested (every key sent, `null` included)
+- [ ] Android conformance test (Key Question 11 h): JSON the app sends validated against the spec's schemas; the models decode spec-valid responses; replaces the example JVM test (own commit, split from the API client 2026-10-11, user)
 - [ ] Room schema: cached cards, pending swipes, dead letters; exported schema + migrations
 - [ ] Swipe screen: `/queue`, dedup by `(feed_id, item_key)`, card stack, gestures (left never, right save, up read now), `time_to_swipe_ms`, `tz_offset_minutes`; read now → Custom Tabs
 - [ ] Swipe sync (foreground only: on app start/resume + debounced after swiping; failure = wait for next trigger): single-swipe fallback on `422`; dead-letter store (with `app_version` + error), retry once on new app version, debug screen with retry/export
@@ -244,6 +245,8 @@ Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicatio
 | Gradle project from Android Studio's "Empty Activity" wizard, libraries added with the code that first uses them (2026-10-10, user) | Versions that fit together and a wrapper out of the box; reviewed file by file; no unused dependencies |
 | JVM tests only, instrumented-test setup removed; Android backup off (2026-10-11, user) | No emulator in CI; the phone holds only a cache. Details in `PROJECT_PLAN.md` §3 Android |
 | APKs installed with adb over USB or home-Wi-Fi wireless debugging; no install over Tailscale, no download from the server (2026-10-11, user) | The app only changes right after coding at the desk; installing from anywhere is machinery without benefit. Tailscale stays for app → API |
+| API client: Retrofit kept over plain OkHttp; stage 5 endpoints only (`/queue`, `/swipes`, `/feeds`); conformance test as its own commit (2026-10-11, user) | Retrofit's declarative interface mirrors the spec; plain OkHttp would save one library for ~15 lines per endpoint. Responses ignore unknown keys (the server may add fields); timestamps stay strings (a card goes back unchanged) |
+| Android mutation testing by hand only: a few deliberate breaks per new test, no tool; mutflow in `PROJECT_PLAN.md` §7 (2026-10-11, user) | PIT's Android plugin has no AGP 9 release yet and is noisy on Kotlin bytecode; Arcmutate is commercial; mutflow too young. Research in findings.md |
 | App secrets in a separate git-ignored `android/secrets.properties` (+ committed template), not `local.properties`; build fails without them; CI writes dummy values (2026-10-11, user) | Studio generates `local.properties` ("do not modify"); a template documents the format, like `.env.example`. Fail-closed like the server |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 
