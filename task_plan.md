@@ -117,7 +117,7 @@ Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicatio
 - [ ] Swipe screen: `/queue`, dedup by `(feed_id, item_key)`, card stack, gestures (left never, right save, up read now), `time_to_swipe_ms`, `tz_offset_minutes`; read now → Custom Tabs
 - [ ] Swipe sync (foreground only: on app start/resume + debounced after swiping; failure = wait for next trigger): single-swipe fallback on `422`; dead-letter store (with `app_version` + error), retry once on new app version, debug screen with retry/export
 - [ ] Feed-status screen (`GET /feeds`: last success, last new item)
-- [ ] Release signing: keystore (+ backup), signed APK, sideload with `adb` over Tailscale
+- [ ] Release signing: keystore (+ backup), signed APK, installed with `adb` over USB or home Wi-Fi (not over Tailscale, 2026-10-11)
 - [ ] Docs: READMEs, diagram 16 (phone sync) from planned to real
 - **Status:** in_progress
 
@@ -243,6 +243,7 @@ Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicatio
 | Android CI job: build + JVM tests, own path-filtered workflow (2026-10-09, user) | Cheap; keeps "merge on green checks" meaningful for Android PRs; path filter spares backend-only pushes the Gradle build |
 | Gradle project from Android Studio's "Empty Activity" wizard, libraries added with the code that first uses them (2026-10-10, user) | Versions that fit together and a wrapper out of the box; reviewed file by file; no unused dependencies |
 | JVM tests only, instrumented-test setup removed; Android backup off (2026-10-11, user) | No emulator in CI; the phone holds only a cache. Details in `PROJECT_PLAN.md` §3 Android |
+| APKs installed with adb over USB or home-Wi-Fi wireless debugging; no install over Tailscale, no download from the server (2026-10-11, user) | The app only changes right after coding at the desk; installing from anywhere is machinery without benefit. Tailscale stays for app → API |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 
 ## Errors Encountered
