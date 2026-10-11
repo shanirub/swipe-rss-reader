@@ -357,6 +357,19 @@
 - `.md` recheck 2026-10-10 (before the commit): `PROJECT_PLAN.md` conformance wording said "absent optional fields" (the API has none: every field is required, nullable), workflow line now mentions CI; `task_plan.md` next-step order; `findings.md` resources (+ `android/README.md`).
 - Files: `.gitignore`, `README.md`, `android/**` (new), `PROJECT_PLAN.md`, `docs/architecture.md`, plan files
 
+## Session: 2026-10-10 to 2026-10-11
+
+### Stage 5: Gradle project setup
+
+- **Status:** complete (committed 2026-10-11 on `stage5-android`)
+- The user created the project with Android Studio's "Empty Activity" wizard (user's choice over a hand-written setup); libraries come with the code that first uses them (user).
+- Versions: the user moved the wrapper to Gradle 9.8, I to 9.8.1; the template's library versions (up to ~3 years old) updated to the latest stable; Kotlin 2.2.10 → 2.4.21 with KGP resolved to match (findings.md).
+- Reviewed with the user, a few files per message: build files, properties files, app code, manifest and resources. Changes (user): instrumented-test setup dropped (JVM tests only, no emulator in CI); `gradle-daemon-jvm.properties` tracked (Gradle docs: check it in, like the wrapper); obsolete `.gitkeep`s removed; Android backup off and its two rule files deleted; unused `colors.xml` deleted. Kept as generated: `MainActivity` "Hello Android!", the example JVM test (until the conformance test replaces it), the theme, the default launcher icon (`docs/logo.png` would be cropped by the adaptive-icon mask).
+- Gradle 10/11 deprecation warning traced to AGP, nothing to fix (findings.md).
+- `android/README.md` rewritten (build command, current layout).
+- `.md` recheck before commit: `findings.md` (resources line, current-state note on `android/`, the two removed test libraries), `PROJECT_PLAN.md` §3 Android (JVM-only tests, backup off were missing), `task_plan.md` decisions, root `README.md` ("being set up"). `backend/tests/README.md` and diagrams unaffected.
+- Files: `android/**`, `PROJECT_PLAN.md`, `README.md`, `findings.md`, `task_plan.md`, `progress.md`
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -440,6 +453,7 @@
 | End-to-end restore in the container (command later dropped) | backup → insert → restore | snapshot state back, safety copy kept | 0 → 1 → 0 items; `swipe_rss-before-restore-…` | pass |
 | Backup on the server | manual `swipe-rss backup` after deploy | snapshot + success line | 180 KB, `version=0004 feed_status=29 items=116 tombstones=138` | pass |
 | First scheduled backup | supercronic, 19:37 UTC | success line | 192 KB, `version=0004 items=124 tombstones=146`, rotated out 0 | pass |
+| Android debug build + JVM test | `./gradlew assembleDebug testDebugUnitTest` (clean) | APK built, test passes | APK built, 1 test passed (2026-10-11) | pass |
 | Extraction sample, one article per feed | `fetch_html` + trafilatura | most extract | 12 ok, Ars ×9 405 (AWS WAF), mekomit 403 | info |
 
 ## Error Log
@@ -476,8 +490,8 @@
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Stages 0–4 complete and deployed (server on `main` at `9d75d91`: fetch, extract, prune hourly :07, backup hourly :37); `main` at `cc5ca62` (docs since). On branch `stage5-android`: stage 5 design questions done and committed (see the 2026-10-07 to 10 entry); next: Gradle project setup, then the Android CI workflow, then wireless debugging |
+| Where am I? | Stages 0–4 complete and deployed (server on `main` at `9d75d91`: fetch, extract, prune hourly :07, backup hourly :37); `main` at `cc5ca62` (docs since). On branch `stage5-android`: stage 5 design questions done and committed (see the 2026-10-07 to 10 entry); Gradle project set up and committed (2026-10-11); next: the Android CI workflow, then wireless debugging |
 | Where am I going? | 5 Android MVP → 6 read-later view → 7 ranking → 8 iterate → 9 off-server backups |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |
-| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard; `api` Compose service; first stage 2 deploy (API live over the tailnet); merge to `main` (PR #1); contract coverage and must-fail tests; Schemathesis; CI workflow; PR #2 merged; triage policy; README rewrite; triage tests (PR #3); retention design; pruning job test-first; on-server backups (stage 4); stage 5 start: `android/` layout, Android stack explained, sync without WorkManager, `minSdk` 36, `applicationId`, hand-written Kotlin models, Android CI decided |
+| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard; `api` Compose service; first stage 2 deploy (API live over the tailnet); merge to `main` (PR #1); contract coverage and must-fail tests; Schemathesis; CI workflow; PR #2 merged; triage policy; README rewrite; triage tests (PR #3); retention design; pruning job test-first; on-server backups (stage 4); stage 5 start: `android/` layout, Android stack explained, sync without WorkManager, `minSdk` 36, `applicationId`, hand-written Kotlin models, Android CI decided; Gradle project from the Studio wizard, reviewed and trimmed |

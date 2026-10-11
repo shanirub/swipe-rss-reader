@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Stage 5 on branch `stage5-android`. Design questions done (API models hand-written + conformance test; Android CI job yes, 2026-10-09). Next (user's order, 2026-10-10): the Gradle project setup, then the Android CI workflow; wireless debugging (phone ↔ desktop adb) when the first APK exists.
+Stage 5 on branch `stage5-android`. Design questions done (API models hand-written + conformance test; Android CI job yes, 2026-10-09). Gradle project setup done (2026-10-11). Next: the Android CI workflow; wireless debugging (phone ↔ desktop adb) when the first APK exists.
 
 ## Current Phase
 
-Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicationId`, API models, CI decided); Phases 0–4 complete (server at `9d75d91`)
+Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicationId`, API models, CI decided), Gradle project set up; Phases 0–4 complete (server at `9d75d91`)
 
 ## Phases
 
@@ -108,7 +108,7 @@ Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicatio
 - [x] Decide: `applicationId` / package name (permanent: a new id is a new app): `io.github.shanirub.swiperss` (2026-10-09)
 - [x] Decide: Kotlin API models: hand-written `@Serializable` classes + Android conformance test, no generator (2026-10-09)
 - [x] Decide: Android CI job (build + JVM tests): yes, own workflow, path-filtered (2026-10-09)
-- [ ] Gradle project: wrapper, version catalog, Compose, kotlinx.serialization, Retrofit + OkHttp, Room, Custom Tabs; `versionCode`
+- [x] Gradle project (2026-10-10, user): created with Android Studio's "Empty Activity" wizard (versions that fit together, wrapper included), then reviewed and adjusted; ends with a minimal app that builds, shows one screen and passes one JVM test; `versionCode`. Libraries (kotlinx.serialization, Retrofit + OkHttp, Room, Custom Tabs) are added with the code that first uses them, each tested right away. Done 2026-10-11: versions updated (Gradle 9.8.1, Kotlin 2.4.21, …), instrumented-test setup dropped, Android backup off, unused `colors.xml` deleted, `gradle-daemon-jvm.properties` tracked, `android/README.md` rewritten; builds and passes the JVM test (screen not yet run on a device or emulator)
 - [ ] Android CI: `.github/workflows/android.yml` (build + JVM tests; paths `android/**`, `api/openapi.yaml`, the workflow file); check whether GitHub's Ubuntu runner image has the Android SDK preinstalled
 - [ ] Token + base URL from `local.properties` → `BuildConfig`; OkHttp interceptor adds the bearer token
 - [ ] API client + `MockWebServer` tests (incl. Android-side conformance, Key Question 11 h)
@@ -241,6 +241,8 @@ Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicatio
 | `minSdk` 36 and `applicationId` `io.github.shanirub.swiperss` (2026-10-09, user) | The owner's Pixel 10a runs Android 16 (API 36); the id is permanent (a new id is a new app), reversed GitHub user name |
 | Kotlin API models hand-written + conformance test, no generator (2026-10-09, user) | ~10 small classes for stage 5; a generator adds a build tool with unverified OpenAPI 3.1 nullable support; the conformance test catches drift. Details in `PROJECT_PLAN.md` §3 Android |
 | Android CI job: build + JVM tests, own path-filtered workflow (2026-10-09, user) | Cheap; keeps "merge on green checks" meaningful for Android PRs; path filter spares backend-only pushes the Gradle build |
+| Gradle project from Android Studio's "Empty Activity" wizard, libraries added with the code that first uses them (2026-10-10, user) | Versions that fit together and a wrapper out of the box; reviewed file by file; no unused dependencies |
+| JVM tests only, instrumented-test setup removed; Android backup off (2026-10-11, user) | No emulator in CI; the phone holds only a cache. Details in `PROJECT_PLAN.md` §3 Android |
 | Keep mcp-server + nginx installed, currently disabled | User's MCP connector, idle until hardware arrives; RSS API on 127.0.0.1:8001 |
 
 ## Errors Encountered
