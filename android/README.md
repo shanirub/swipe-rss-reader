@@ -6,7 +6,7 @@ Current state: the project skeleton from Android Studio's "Empty Activity" wizar
 
 ## Build
 
-Open `android/` in Android Studio, or from a terminal:
+Open `android/` in Android Studio (not the repo root: there Studio finds no Gradle project and Run ▶ stays greyed out), or from a terminal:
 
 ```
 cd android

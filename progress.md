@@ -372,11 +372,20 @@
 
 ### Stage 5: Android CI workflow (2026-10-11)
 
-- **Status:** in_progress (first GitHub run pending)
+- **Status:** complete (committed `3442910`; first GitHub run green)
 - `.github/workflows/android.yml`: one job, checkout → `setup-java` 25 (Temurin) → `setup-gradle` (cache, wrapper validation) → `./gradlew assembleDebug testDebugUnitTest` in `android/`; path filter on push and pull request (`android/**`, `api/openapi.yaml`, the workflow), manual trigger, concurrency per ref, 20-min limit. Checked first: the runner image has the SDK and JDK 25 (findings.md), the action tags exist. Schema-validated (`check-jsonschema`, GitHub workflow schema).
 - Docs: root `README.md` tree, `android/README.md` (CI note), `task_plan.md`, `findings.md`.
 - `.md` recheck before commit (diff since `36a6c8d` plus every CI mention; the files were read in full for that commit the same day): `task_plan.md` next step and current phase, reboot table, `PROJECT_PLAN.md` (date the workflow was added), `backend/tests/README.md` CI section points to `android.yml`. Diagrams unaffected (diagram 18 is the backend loop).
 - Files: `.github/workflows/android.yml` (new), `README.md`, `android/README.md`, `PROJECT_PLAN.md`, `backend/tests/README.md`, plan files
+
+### Stage 5: Wireless debugging (2026-10-11)
+
+- **Status:** complete (committed with the CI bookkeeping)
+- The user removed Fedora's adb; only the SDK's adb 37.0.1 is left. The Studio terminal froze twice around pairing (cause unknown); after a Studio restart the user enabled wireless debugging on the Pixel and paired from Device Manager.
+- First check: `adb devices` empty, `adb mdns services` empty. The firewall allows UDP 1025–65535 (mDNS gets through); the phone's Tailscale was offline for 3 days, so not the cause. A few minutes later the phone was listed (`192.168.0.161`, found by mDNS) and answered `getprop` (Android 16, API 36). Likely the phone wasn't advertising at the first check; not confirmed.
+- Run ▶ greyed out: Studio had the repo root open, which has no Gradle project, so no `app` run configuration. Opening `android/` fixed it; "Hello Android!" showed on the Pixel (user).
+- `.md` recheck before commit (all maintained files read in full): `findings.md` current-state date (still 2026-10-09), reboot table "What have I done?" lacked this step, this entry's status. `PROJECT_PLAN.md` (adb over Tailscale for release sideloading stays the plan; debug used the home Wi-Fi), root and tests READMEs, diagrams unaffected.
+- Files: `task_plan.md`, `findings.md`, `android/README.md`, `progress.md`
 
 ## Test Results
 
@@ -462,6 +471,8 @@
 | Backup on the server | manual `swipe-rss backup` after deploy | snapshot + success line | 180 KB, `version=0004 feed_status=29 items=116 tombstones=138` | pass |
 | First scheduled backup | supercronic, 19:37 UTC | success line | 192 KB, `version=0004 items=124 tombstones=146`, rotated out 0 | pass |
 | Android debug build + JVM test | `./gradlew assembleDebug testDebugUnitTest` (clean) | APK built, test passes | APK built, 1 test passed (2026-10-11) | pass |
+| First run on the phone | Studio Run ▶ (`android/` opened), Pixel 10a over wireless debugging | "Hello Android!" on screen | shown (user, 2026-10-11) | pass |
+| First Android CI run (GitHub Actions) | push of `3442910` | build + JVM test green | wrapper jar valid, JDK 25.0.4 from the tool cache, `BUILD SUCCESSFUL in 1m 56s`; backend CI on the same commit green | pass |
 | Extraction sample, one article per feed | `fetch_html` + trafilatura | most extract | 12 ok, Ars ×9 405 (AWS WAF), mekomit 403 | info |
 
 ## Error Log
@@ -498,8 +509,8 @@
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Stages 0–4 complete and deployed (server on `main` at `9d75d91`: fetch, extract, prune hourly :07, backup hourly :37); `main` at `cc5ca62` (docs since). On branch `stage5-android`: stage 5 design questions done and committed (see the 2026-10-07 to 10 entry); Gradle project set up and committed (2026-10-11); Android CI workflow written and pushed, first run being checked; next: wireless debugging |
+| Where am I? | Stages 0–4 complete and deployed (server on `main` at `9d75d91`: fetch, extract, prune hourly :07, backup hourly :37); `main` at `cc5ca62` (docs since). On branch `stage5-android`: stage 5 design questions done and committed (see the 2026-10-07 to 10 entry); Gradle project set up and committed (2026-10-11); Android CI workflow committed (`3442910`), first run green; wireless debugging works, app ran on the Pixel (2026-10-11); next: token + base URL → `BuildConfig`, API client |
 | Where am I going? | 5 Android MVP → 6 read-later view → 7 ranking → 8 iterate → 9 off-server backups |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |
-| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard; `api` Compose service; first stage 2 deploy (API live over the tailnet); merge to `main` (PR #1); contract coverage and must-fail tests; Schemathesis; CI workflow; PR #2 merged; triage policy; README rewrite; triage tests (PR #3); retention design; pruning job test-first; on-server backups (stage 4); stage 5 start: `android/` layout, Android stack explained, sync without WorkManager, `minSdk` 36, `applicationId`, hand-written Kotlin models, Android CI decided; Gradle project from the Studio wizard, reviewed and trimmed; Android CI workflow |
+| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard; `api` Compose service; first stage 2 deploy (API live over the tailnet); merge to `main` (PR #1); contract coverage and must-fail tests; Schemathesis; CI workflow; PR #2 merged; triage policy; README rewrite; triage tests (PR #3); retention design; pruning job test-first; on-server backups (stage 4); stage 5 start: `android/` layout, Android stack explained, sync without WorkManager, `minSdk` 36, `applicationId`, hand-written Kotlin models, Android CI decided; Gradle project from the Studio wizard, reviewed and trimmed; Android CI workflow; wireless debugging, first run on the Pixel |

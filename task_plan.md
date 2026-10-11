@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Stage 5 on branch `stage5-android`. Design questions done (API models hand-written + conformance test; Android CI job yes, 2026-10-09). Gradle project setup done, Android CI workflow written (2026-10-11; first GitHub run pending). Next: check that run; wireless debugging (phone ↔ desktop adb) when the first APK exists.
+Stage 5 on branch `stage5-android`. Design questions done (API models hand-written + conformance test; Android CI job yes, 2026-10-09). Gradle project setup done, Android CI workflow green on GitHub, wireless debugging works and the app ran on the Pixel (2026-10-11). Next: token + base URL from `local.properties` → `BuildConfig`, then the API client.
 
 ## Current Phase
 
-Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicationId`, API models, CI decided), Gradle project set up, Android CI workflow written; Phases 0–4 complete (server at `9d75d91`)
+Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicationId`, API models, CI decided), Gradle project set up, Android CI workflow green, app runs on the phone over wireless debugging; Phases 0–4 complete (server at `9d75d91`)
 
 ## Phases
 
@@ -104,12 +104,12 @@ Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicatio
 
 - [x] `android/` layout + `android/README.md`; `.gitignore` covers `.kotlin/` and every module's `build/` (2026-10-06)
 - [x] Toolchain: Android Studio 2026.2.1 via JetBrains Toolbox (bundled JDK 25, SDK platform 37, emulator AVD API 37); phone Pixel 10a on Android 16 → `minSdk` 36 (2026-10-09)
-- [ ] Wireless debugging (phone ↔ desktop adb)
+- [x] Wireless debugging (phone ↔ desktop adb), 2026-10-11: Fedora's adb removed (user), only the SDK's adb 37.0.1 left; phone paired from Studio's Device Manager, found over the home Wi-Fi by mDNS (not Tailscale); Studio must have `android/` open (not the repo root) for the `app` run configuration; "Hello Android!" ran on the Pixel 10a (Android 16, API 36)
 - [x] Decide: `applicationId` / package name (permanent: a new id is a new app): `io.github.shanirub.swiperss` (2026-10-09)
 - [x] Decide: Kotlin API models: hand-written `@Serializable` classes + Android conformance test, no generator (2026-10-09)
 - [x] Decide: Android CI job (build + JVM tests): yes, own workflow, path-filtered (2026-10-09)
-- [x] Gradle project (2026-10-10, user): created with Android Studio's "Empty Activity" wizard (versions that fit together, wrapper included), then reviewed and adjusted; ends with a minimal app that builds, shows one screen and passes one JVM test; `versionCode`. Libraries (kotlinx.serialization, Retrofit + OkHttp, Room, Custom Tabs) are added with the code that first uses them, each tested right away. Done 2026-10-11: versions updated (Gradle 9.8.1, Kotlin 2.4.21, …), instrumented-test setup dropped, Android backup off, unused `colors.xml` deleted, `gradle-daemon-jvm.properties` tracked, `android/README.md` rewritten; builds and passes the JVM test (screen not yet run on a device or emulator)
-- [ ] Android CI: `.github/workflows/android.yml` (build + JVM tests; paths `android/**`, `api/openapi.yaml`, the workflow file); runner image has the Android SDK (platform 37) and JDK 25 preinstalled (2026-10-11); written and schema-validated, first run on GitHub pending
+- [x] Gradle project (2026-10-10, user): created with Android Studio's "Empty Activity" wizard (versions that fit together, wrapper included), then reviewed and adjusted; ends with a minimal app that builds, shows one screen and passes one JVM test; `versionCode`. Libraries (kotlinx.serialization, Retrofit + OkHttp, Room, Custom Tabs) are added with the code that first uses them, each tested right away. Done 2026-10-11: versions updated (Gradle 9.8.1, Kotlin 2.4.21, …), instrumented-test setup dropped, Android backup off, unused `colors.xml` deleted, `gradle-daemon-jvm.properties` tracked, `android/README.md` rewritten; builds and passes the JVM test; the screen ran on the Pixel on 2026-10-11 (wireless debugging)
+- [x] Android CI: `.github/workflows/android.yml` (build + JVM tests; paths `android/**`, `api/openapi.yaml`, the workflow file); runner image has the Android SDK (platform 37) and JDK 25 preinstalled (2026-10-11); written and schema-validated; first run on GitHub green (`3442910`, 2026-10-11, build 1m56s, ~2 min total)
 - [ ] Token + base URL from `local.properties` → `BuildConfig`; OkHttp interceptor adds the bearer token
 - [ ] API client + `MockWebServer` tests (incl. Android-side conformance, Key Question 11 h)
 - [ ] kotlinx.serialization sends nulls/defaults (`encodeDefaults = true`), so required-but-nullable fields are never dropped
@@ -279,6 +279,6 @@ Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicatio
 - Update phase status as work progresses: `pending` → `in_progress` → `complete`.
 - Re-read `PROJECT_PLAN.md` before each phase; don't re-open settled decisions.
 - Dev loop: edit on desktop → `cd backend && uv run ruff check . && uv run ruff format --check . && uv run pytest` → when guard tests or the code they protect changed: `uv run python scripts/mutants.py` → optional local `docker compose up --build` → **recheck all `.md` files** → commit + push → server `cd ~/swipe-rss-reader && git pull && docker compose up -d --build`.
-- **Mandatory before every commit (user rule, 2026-10-03): recheck all maintained `.md` files for stale or missing data**: `PROJECT_PLAN.md`, `task_plan.md`, `progress.md`, `findings.md`, `README.md`, `backend/tests/README.md`, `android/README.md`, `docs/architecture.md` (diagrams must match the code flow). Read them in full, compare with what changed, fix, then commit. It catches something nearly every time.
+- **Mandatory before every commit (user rule, 2026-10-03): recheck all maintained `.md` files for stale or missing data**: `PROJECT_PLAN.md`, `task_plan.md`, `progress.md`, `findings.md`, `README.md`, `backend/tests/README.md`, `android/README.md`, `docs/architecture.md` (diagrams must match the code flow). Read them in full, compare with what changed, fix, then commit. It catches something nearly every time. Every commit, even several on one day; a diff-only check is not enough (user, 2026-10-11).
 - Deploy: Claude runs `cd ~/swipe-rss-reader && git pull && docker compose up -d --build` over Tailscale SSH **only after the user approves that deploy**, then read-only checks (`docker compose ps`, logs, read-only DB queries). Never edit files in the server checkout. Root, Tailscale and system changes go to the user. Note: `srub` is in group `docker` (root-equivalent).
 - Server facts: RSS API URL `https://my-first-server.porcupine-celsius.ts.net:8443` → `127.0.0.1:8001` (`api` container, live since 2026-10-04). DB in named volume `swipe-rss-reader_data` at `/data/swipe_rss.db`.
