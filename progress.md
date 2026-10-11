@@ -370,6 +370,14 @@
 - `.md` recheck before commit: `findings.md` (resources line, current-state note on `android/`, the two removed test libraries), `PROJECT_PLAN.md` §3 Android (JVM-only tests, backup off were missing), `task_plan.md` decisions, root `README.md` ("being set up"). `backend/tests/README.md` and diagrams unaffected.
 - Files: `android/**`, `PROJECT_PLAN.md`, `README.md`, `findings.md`, `task_plan.md`, `progress.md`
 
+### Stage 5: Android CI workflow (2026-10-11)
+
+- **Status:** in_progress (first GitHub run pending)
+- `.github/workflows/android.yml`: one job, checkout → `setup-java` 25 (Temurin) → `setup-gradle` (cache, wrapper validation) → `./gradlew assembleDebug testDebugUnitTest` in `android/`; path filter on push and pull request (`android/**`, `api/openapi.yaml`, the workflow), manual trigger, concurrency per ref, 20-min limit. Checked first: the runner image has the SDK and JDK 25 (findings.md), the action tags exist. Schema-validated (`check-jsonschema`, GitHub workflow schema).
+- Docs: root `README.md` tree, `android/README.md` (CI note), `task_plan.md`, `findings.md`.
+- `.md` recheck before commit (diff since `36a6c8d` plus every CI mention; the files were read in full for that commit the same day): `task_plan.md` next step and current phase, reboot table, `PROJECT_PLAN.md` (date the workflow was added), `backend/tests/README.md` CI section points to `android.yml`. Diagrams unaffected (diagram 18 is the backend loop).
+- Files: `.github/workflows/android.yml` (new), `README.md`, `android/README.md`, `PROJECT_PLAN.md`, `backend/tests/README.md`, plan files
+
 ## Test Results
 
 | Test | Input | Expected | Actual | Status |
@@ -490,8 +498,8 @@
 
 | Question | Answer |
 |----------|--------|
-| Where am I? | Stages 0–4 complete and deployed (server on `main` at `9d75d91`: fetch, extract, prune hourly :07, backup hourly :37); `main` at `cc5ca62` (docs since). On branch `stage5-android`: stage 5 design questions done and committed (see the 2026-10-07 to 10 entry); Gradle project set up and committed (2026-10-11); next: the Android CI workflow, then wireless debugging |
+| Where am I? | Stages 0–4 complete and deployed (server on `main` at `9d75d91`: fetch, extract, prune hourly :07, backup hourly :37); `main` at `cc5ca62` (docs since). On branch `stage5-android`: stage 5 design questions done and committed (see the 2026-10-07 to 10 entry); Gradle project set up and committed (2026-10-11); Android CI workflow written and pushed, first run being checked; next: wireless debugging |
 | Where am I going? | 5 Android MVP → 6 read-later view → 7 ranking → 8 iterate → 9 off-server backups |
 | What's the goal? | Single-user swipe RSS reader: backend on `my-first-server`, sideloaded Android app |
 | What have I learned? | See findings.md (current state, server inventory, stage 1 research, Phase 2 design review) |
-| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard; `api` Compose service; first stage 2 deploy (API live over the tailnet); merge to `main` (PR #1); contract coverage and must-fail tests; Schemathesis; CI workflow; PR #2 merged; triage policy; README rewrite; triage tests (PR #3); retention design; pruning job test-first; on-server backups (stage 4); stage 5 start: `android/` layout, Android stack explained, sync without WorkManager, `minSdk` 36, `applicationId`, hand-written Kotlin models, Android CI decided; Gradle project from the Studio wizard, reviewed and trimmed |
+| What have I done? | Server foundation; ingest pipeline deployed and fetching every 15 min; Phase 2 design decisions recorded in `PROJECT_PLAN.md`; API contract written and validated; API models generated (freshness test); fetcher ingest caps + migration `0002`; READMEs; migration `0003` (swipes, saved); FastAPI skeleton + secure-by-default auth; mutation testing (`scripts/mutants.py`, `scripts/run_mutmut.py`) and the test gaps mutmut found; `GET /queue` + `POST /swipes`; architecture diagrams; `GET /feeds`, `GET /saved`, saved content; extraction job + SSRF guard; `api` Compose service; first stage 2 deploy (API live over the tailnet); merge to `main` (PR #1); contract coverage and must-fail tests; Schemathesis; CI workflow; PR #2 merged; triage policy; README rewrite; triage tests (PR #3); retention design; pruning job test-first; on-server backups (stage 4); stage 5 start: `android/` layout, Android stack explained, sync without WorkManager, `minSdk` 36, `applicationId`, hand-written Kotlin models, Android CI decided; Gradle project from the Studio wizard, reviewed and trimmed; Android CI workflow |

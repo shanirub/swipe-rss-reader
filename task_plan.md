@@ -8,11 +8,11 @@ A working single-user RSS reader: backend on `my-first-server` (Docker Compose, 
 
 ## Next Step
 
-Stage 5 on branch `stage5-android`. Design questions done (API models hand-written + conformance test; Android CI job yes, 2026-10-09). Gradle project setup done (2026-10-11). Next: the Android CI workflow; wireless debugging (phone ↔ desktop adb) when the first APK exists.
+Stage 5 on branch `stage5-android`. Design questions done (API models hand-written + conformance test; Android CI job yes, 2026-10-09). Gradle project setup done, Android CI workflow written (2026-10-11; first GitHub run pending). Next: check that run; wireless debugging (phone ↔ desktop adb) when the first APK exists.
 
 ## Current Phase
 
-Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicationId`, API models, CI decided), Gradle project set up; Phases 0–4 complete (server at `9d75d91`)
+Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicationId`, API models, CI decided), Gradle project set up, Android CI workflow written; Phases 0–4 complete (server at `9d75d91`)
 
 ## Phases
 
@@ -109,7 +109,7 @@ Phase 5 (Android MVP) in progress: design questions (sync, `minSdk`, `applicatio
 - [x] Decide: Kotlin API models: hand-written `@Serializable` classes + Android conformance test, no generator (2026-10-09)
 - [x] Decide: Android CI job (build + JVM tests): yes, own workflow, path-filtered (2026-10-09)
 - [x] Gradle project (2026-10-10, user): created with Android Studio's "Empty Activity" wizard (versions that fit together, wrapper included), then reviewed and adjusted; ends with a minimal app that builds, shows one screen and passes one JVM test; `versionCode`. Libraries (kotlinx.serialization, Retrofit + OkHttp, Room, Custom Tabs) are added with the code that first uses them, each tested right away. Done 2026-10-11: versions updated (Gradle 9.8.1, Kotlin 2.4.21, …), instrumented-test setup dropped, Android backup off, unused `colors.xml` deleted, `gradle-daemon-jvm.properties` tracked, `android/README.md` rewritten; builds and passes the JVM test (screen not yet run on a device or emulator)
-- [ ] Android CI: `.github/workflows/android.yml` (build + JVM tests; paths `android/**`, `api/openapi.yaml`, the workflow file); check whether GitHub's Ubuntu runner image has the Android SDK preinstalled
+- [ ] Android CI: `.github/workflows/android.yml` (build + JVM tests; paths `android/**`, `api/openapi.yaml`, the workflow file); runner image has the Android SDK (platform 37) and JDK 25 preinstalled (2026-10-11); written and schema-validated, first run on GitHub pending
 - [ ] Token + base URL from `local.properties` → `BuildConfig`; OkHttp interceptor adds the bearer token
 - [ ] API client + `MockWebServer` tests (incl. Android-side conformance, Key Question 11 h)
 - [ ] kotlinx.serialization sends nulls/defaults (`encodeDefaults = true`), so required-but-nullable fields are never dropped

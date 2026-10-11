@@ -1,0 +1,39 @@
+# Android CI (decided 2026-10-09): builds the debug APK and runs the JVM unit tests; no emulator
+# (JVM tests only, PROJECT_PLAN.md §3 Android). Own workflow so backend-only pushes don't wait for
+# a Gradle build; ci.yml stays the backend's. api/openapi.yaml is included because the Android
+# conformance test will read it.
+name: Android
+
+on:
+  push:
+    paths:
+      - "android/**"
+      - "api/openapi.yaml"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - "api/openapi.yaml"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+concurrency:  # a newer push to the same branch cancels the older run
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest  # has the Android SDK (ANDROID_HOME, platform 37) and JDK 25 preinstalled
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "25"  # = toolchainVersion in android/gradle/gradle-daemon-jvm.properties
+      - uses: gradle/actions/setup-gradle@v6  # caches Gradle downloads, validates the wrapper jar
+      - name: Build the debug APK and run the JVM unit tests
+        run: ./gradlew assembleDebug testDebugUnitTest

@@ -23,6 +23,7 @@ The three tracking files (`task_plan.md`, `progress.md`, `findings.md`) and the 
 ├── progress.md              session log, test results, errors                   │ (Claude Code skill)
 ├── findings.md              research notes, server inventory                    ┘
 ├── .github/workflows/ci.yml  CI jobs, see backend/tests/README.md
+├── .github/workflows/android.yml  Android CI: debug build + JVM tests, only when android/ or the spec changes
 ├── compose.yaml             Docker Compose: migrate, scheduler, api (127.0.0.1:8001), log rotation, backup mount
 ├── .env.example             template for .env (API token; optional log level, backup host dir); never committed
 ├── docs/

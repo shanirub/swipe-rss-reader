@@ -15,6 +15,8 @@ JAVA_HOME=~/.local/share/JetBrains/Toolbox/apps/android-studio/jbr ./gradlew ass
 
 `JAVA_HOME` only has to point to a JDK that can start Gradle (17 or newer; Android Studio's bundled one is used above). Gradle itself then runs on JDK 25, as pinned in `gradle/gradle-daemon-jvm.properties`, and downloads it if the machine doesn't have it. The debug APK lands in `app/build/outputs/apk/debug/app-debug.apk`; JVM test reports in `app/build/reports/tests/`.
 
+CI: `.github/workflows/android.yml` runs the same command on GitHub (JDK 25, the runner's preinstalled Android SDK) when `android/`, `api/openapi.yaml` or the workflow itself changes.
+
 ## Layout
 
 ```

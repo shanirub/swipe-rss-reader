@@ -30,7 +30,7 @@ uv run python scripts/run_mutmut.py                      # generated mutation te
 | `compose-smoke` | every push | `docker compose up` of `migrate` + `api` as on the server: migrate exits 0, api becomes healthy, `/health`, auth and `/feeds` answer |
 | `mutmut` | pull requests, manual ("Run workflow") | generated mutation testing, ~10–15 min; a report, not a gate |
 
-The smoke job leaves the scheduler off, because it would fetch real feeds.
+The smoke job leaves the scheduler off, because it would fetch real feeds. The Android app has its own workflow, `android.yml` (see `android/README.md`).
 
 ## Test categories
 
