@@ -1,0 +1,96 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "c6c0f8871a2795e35ff7f44e7c7a185a",
+    "entities": [
+      {
+        "tableName": "cards",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`feed_id` TEXT NOT NULL, `item_key` TEXT NOT NULL, `position` INTEGER NOT NULL, `card_json` TEXT NOT NULL, PRIMARY KEY(`feed_id`, `item_key`))",
+        "fields": [
+          {
+            "fieldPath": "feedId",
+            "columnName": "feed_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemKey",
+            "columnName": "item_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "position",
+            "columnName": "position",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cardJson",
+            "columnName": "card_json",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "feed_id",
+            "item_key"
+          ]
+        }
+      },
+      {
+        "tableName": "outbox",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`swipe_id` TEXT NOT NULL, `feed_id` TEXT NOT NULL, `item_key` TEXT NOT NULL, `swipe_json` TEXT NOT NULL, `dead_error` TEXT, `dead_app_version` INTEGER, PRIMARY KEY(`swipe_id`))",
+        "fields": [
+          {
+            "fieldPath": "swipeId",
+            "columnName": "swipe_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "feedId",
+            "columnName": "feed_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemKey",
+            "columnName": "item_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "swipeJson",
+            "columnName": "swipe_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deadError",
+            "columnName": "dead_error",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "deadAppVersion",
+            "columnName": "dead_app_version",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "swipe_id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c6c0f8871a2795e35ff7f44e7c7a185a')"
+    ]
+  }
+}

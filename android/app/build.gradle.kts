@@ -4,6 +4,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.room)
 }
 
 // API token and server address (PROJECT_PLAN.md §3) come from android/secrets.properties, which git
@@ -69,6 +71,10 @@ android {
     }
 }
 
+room {
+    schemaDirectory("$projectDir/schemas")
+}
+
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
@@ -81,10 +87,13 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.kotlinx.serialization)
+    implementation(libs.room.runtime)
+    ksp(libs.room.compiler)
     implementation(libs.okhttp)  // explicit: Retrofit 3.0.0 asks for OkHttp 4.12
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.sqlite.bundled.jvm)
     testImplementation(libs.json.schema.validator)  // conformance test only, never in the APK
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
