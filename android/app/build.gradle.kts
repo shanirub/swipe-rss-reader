@@ -85,5 +85,13 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.json.schema.validator)  // conformance test only, never in the APK
     debugImplementation(libs.androidx.compose.ui.tooling)
+}
+// SpecConformanceTest reads the API spec. Declared as an input, so a spec change re-runs the tests
+// instead of Gradle reusing the last result.
+val openapiSpec = rootProject.layout.projectDirectory.file("../api/openapi.yaml")
+tasks.withType<Test>().configureEach {
+    inputs.file(openapiSpec).withPathSensitivity(PathSensitivity.NONE)
+    systemProperty("swiperss.openapiSpec", openapiSpec.asFile.absolutePath)
 }

@@ -2,7 +2,7 @@
 
 The swipe client for the backend's API (`../api/openapi.yaml`). Stage 5 in [`PROJECT_PLAN.md`](../PROJECT_PLAN.md); design and status in [`task_plan.md`](../task_plan.md).
 
-Current state: the project skeleton from Android Studio's "Empty Activity" wizard (one "Hello Android!" screen), reviewed and trimmed, plus the API client (`api/`: Retrofit + OkHttp + kotlinx.serialization, tested against MockWebServer; no screen uses it yet). Further libraries (Room, Custom Tabs) are added together with the code that first uses them.
+Current state: the project skeleton from Android Studio's "Empty Activity" wizard (one "Hello Android!" screen), reviewed and trimmed, plus the API client (`api/`: Retrofit + OkHttp + kotlinx.serialization, tested against MockWebServer and checked against `api/openapi.yaml`; no screen uses it yet). How the app is tested: [`app/src/test/README.md`](app/src/test/README.md). Further libraries (Room, Custom Tabs) are added together with the code that first uses them.
 
 ## Build
 
@@ -41,8 +41,9 @@ android/
         │                      api/: API models, Retrofit interface, token interceptor, client
         ├── main/res/          resources: strings, launcher icon (still the default), base theme
         ├── main/keepRules/    rules for R8, the release-build shrinker (empty so far)
-        └── test/java/         local JVM tests (JUnit; api/: MockWebServer): fast, no phone; no instrumented
-                               (on-device) tests for now, see findings.md
+        └── test/              local JVM tests (JUnit): fast, no phone; no instrumented (on-device) tests
+                               for now; README.md explains them, java/ holds them (api/: MockWebServer,
+                               spec conformance)
 ```
 
 Secrets stay out of git: `secrets.properties` (API token), `local.properties` (SDK path, written by Studio) and the signing keystore are ignored by the root `.gitignore`. The token ends up in plain text inside the APK, so the APK goes only from the desktop to the phone.
