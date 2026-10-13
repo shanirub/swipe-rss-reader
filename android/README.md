@@ -2,7 +2,7 @@
 
 The swipe client for the backend's API (`../api/openapi.yaml`). Stage 5 in [`PROJECT_PLAN.md`](../PROJECT_PLAN.md); design and status in [`task_plan.md`](../task_plan.md).
 
-Current state: the project skeleton from Android Studio's "Empty Activity" wizard (one "Hello Android!" screen), reviewed and trimmed, plus the API client (`api/`: Retrofit + OkHttp + kotlinx.serialization, tested against MockWebServer and checked against `api/openapi.yaml`; no screen uses it yet) and the local database (`db/`: Room tables for the card stack and the swipe outbox, tested on the desktop JVM). How the app is tested: [`app/src/test/README.md`](app/src/test/README.md). Further libraries (Custom Tabs) are added together with the code that first uses them.
+Current state: the swipe screen works. It loads cards from the server (`api/`: Retrofit + OkHttp + kotlinx.serialization, checked against `api/openapi.yaml`), keeps the stack and every swipe in a local database (`db/`: Room), and handles the gestures, the card timer and "read now" in Custom Tabs (`swipe/`). Swipes stay on the phone until the sync step is built. How the app is tested: [`app/src/test/README.md`](app/src/test/README.md). Libraries are added together with the code that first uses them.
 
 ## Build
 
@@ -40,13 +40,15 @@ android/
         ├── main/AndroidManifest.xml   app declaration: name, icon, screens, permissions; backup off
         ├── main/java/         Kotlin sources (Android's convention keeps the java/ name),
         │                      in package io/github/shanirub/swiperss/ (= the applicationId);
+        │                      MainActivity (the one screen), SwipeRssApp (database + client, once);
         │                      api/: API models, Retrofit interface, token interceptor, client;
-        │                      db/: Room database (cards, outbox) and its queries
+        │                      db/: Room database (cards, outbox) and its queries;
+        │                      swipe/: swipe screen (repository, ViewModel, gesture rule, card timer, UI)
         ├── main/res/          resources: strings, launcher icon (still the default), base theme
         ├── main/keepRules/    rules for R8, the release-build shrinker (empty so far)
         └── test/              local JVM tests (JUnit): fast, no phone; no instrumented (on-device) tests
                                for now; README.md explains them, java/ holds them (api/: MockWebServer,
-                               spec conformance; db/: Room on an in-memory SQLite)
+                               spec conformance; db/: Room on an in-memory SQLite; swipe/: the screen's logic)
 ```
 
 Secrets stay out of git: `secrets.properties` (API token), `local.properties` (SDK path, written by Studio) and the signing keystore are ignored by the root `.gitignore`. The token ends up in plain text inside the APK, so the APK goes only from the desktop to the phone.

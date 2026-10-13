@@ -27,7 +27,7 @@ Everything runs on one server in Docker Compose. Only Tailscale Serve faces the 
 ```mermaid
 flowchart LR
     feeds(["RSS / Atom feeds and article pages<br/>(internet)"])
-    app["Android app<br/>(stage 5, planned)"]
+    app["Android app<br/>(stage 5, in progress)"]
 
     subgraph server["my-first-server: Docker Compose"]
         migrate["migrate container<br/>alembic upgrade head, one-shot"]
@@ -583,7 +583,7 @@ stateDiagram-v2
 
 ## 16. Phone swipe sync (sequence, planned)
 
-How the Android app (stage 5) is designed to use `POST /swipes`, including the dead-letter fallback. Sync runs only while the app is in the foreground (on app start/resume and a few seconds after the last swipe); there is no background job.
+How the Android app (stage 5) is designed to use `POST /swipes`, including the dead-letter fallback. Step 1 exists (the swipe screen stores swipes in the `outbox` table, since 2026-10-13); sending them is the next step. Sync runs only while the app is in the foreground (on app start/resume and a few seconds after the last swipe); there is no background job.
 
 ```mermaid
 sequenceDiagram

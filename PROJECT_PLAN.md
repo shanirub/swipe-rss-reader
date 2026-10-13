@@ -114,7 +114,7 @@ All networking happens over **Tailscale** (WireGuard-based private mesh VPN). No
 
 ### Deduplication
 
-- Scope is **per feed**: identity is `(feed_id, key)`. The same article in two feeds appears twice; revisit only if this proves annoying (global dedup on normalized link would only catch identical URLs and muddies the per-feed ML signal).
+- Scope is **per feed**: identity is `(feed_id, key)`. The same article in two feeds appears twice; revisit only if this proves annoying (global dedup on normalized link would only catch identical URLs and muddies the per-feed ML signal). First use on the phone (2026-10-13) showed such pairs from overlapping Wired and Ars Technica category feeds (the same article swiped twice); to be handled later (stage 8, user).
 - `key` is the first available of:
   1. Entry GUID/ID (feedparser `entry.id`).
   2. Normalized link: lowercase scheme and host, drop `#fragment`, strip `utm_*` and similar tracking parameters.
@@ -130,9 +130,10 @@ All networking happens over **Tailscale** (WireGuard-based private mesh VPN). No
 |---|---|---|
 | Never | negative | swipe left |
 | Save for later | positive | swipe right |
-| Read now | positive (possibly stronger) | swipe up / tap |
+| Read now | positive (possibly stronger) | swipe up |
 
 - All three actions are **logged distinctly**, even if initially treated as equal positives.
+- **No tap for read now** (decided 2026-10-13, user): an accidental tap would record the strongest label and open a page. Read now needs an `http`/`https` link; on a card without one the up-swipe springs back.
 - Items that **expire unswiped are unlabeled**, not negatives.
 
 ### Swipe log fields
@@ -232,8 +233,9 @@ Two layers (decided 2026-10-06):
 - **Retrofit + OkHttp** (HTTP), **kotlinx.serialization** (JSON).
 - **Room** for the local cache and an offline queue of unsent swipes. Schema (decided 2026-10-12, user; `db/LocalStore.kt`): `cards` (the stack: `(feed_id, item_key)` key, `position`, `card_json`) and `outbox` (`swipe_id` key, `feed_id`, `item_key`, `swipe_json`, `dead_error`, `dead_app_version`). Cards and swipes are stored as the API's JSON plus only the columns queries need: a swipe is resent exactly as recorded, and API model changes need no Room migration (rejected: one column per field, which needs mapping code both ways and a migration per model change). Dead letters are a state of `outbox` (`dead_error` set), not a second table: moving and retrying are one `UPDATE` each, like the backend's `saved.extraction_status`. A swipe deletes its card and queues itself in one transaction. Cards from `/queue` already on the stack or in `outbox` (pending or dead) are skipped. On app start, dead letters from older app versions get one more try; one that fails again carries the new version and waits for the next release. The schema is exported to `android/app/schemas/` (reviewable in git, the base for migrations). Version 1 changes freely until the first release APK; migrations start from there. Never `fallbackToDestructiveMigration()`: it would silently delete unsent swipes.
 - **Swipe sync only while the app is in the foreground** (decided 2026-10-08): pending swipes are sent when the app comes to the foreground and a few seconds after the last swipe (debounced), from a coroutine tied to the screen's lifecycle. On failure (no network, Tailscale off, `5xx`) nothing is done: the swipes stay in Room until the next trigger. A request cancelled by leaving the app is harmless (swipes are deleted only after a `200`; `swipe_id` makes resends safe). Rejected: **WorkManager** background sync. It adds no durability (Room provides that) and only shortens the delay until the server sees swipes, which doesn't matter for one user (ranking uses accumulated history); it would cost a dependency, a Worker, constraint/backoff setup and its own tests. Trade-off: swipes from a session that ends offline reach the server at the next app start.
+- **Swipe screen** (implemented 2026-10-13, `swipe/`): `SwipeRepository` (plain Kotlin: refills the stack from `GET /queue?limit=50` when fewer than 10 cards are left, records swipes into `outbox`), `SwipeViewModel` (state for the screen, one refill at a time, refill errors as one line of text), `SwipeScreen` (Compose). The gesture is Compose's own drag handling, no swipe-card library: a card counts when dragged past a third of the screen's width (left, right) or height (up), or flicked faster than 1000 dp/s in the direction it was dragged; the decision is a pure function with JVM tests. `time_to_swipe_ms` runs on the monotonic clock from the moment a card becomes the top card and restarts when the app returns to the foreground (time in another app doesn't count). `swiped_at` is the phone's local time with its offset, to the millisecond; `tz_offset_minutes` comes from the same clock reading. The database and HTTP client are created once in an `Application` class (`SwipeRssApp`), by hand. Cards show `feed_id`; feed names come with the feed-status screen. Until sync exists the server keeps serving swiped cards, so the stack runs dry after about 50 swipes.
 - **Coil** for images (if feeds provide thumbnails).
-- **Custom Tabs** for opening articles.
+- **Custom Tabs** for opening articles (`androidx.browser`, used by read now since 2026-10-13).
 - Dependency injection (Hilt) skipped for the MVP.
 - **Distribution:** sideloaded release APK signed with a personal key, installed with adb from the desktop, over USB or wireless debugging on the home Wi-Fi (decided 2026-10-11, user: installing from anywhere over Tailscale or downloading from the server would add machinery for no benefit, since the app only changes right after coding at the desk; Tailscale is still how the app reaches the API). Increment `versionCode` each release. **Back up the keystore.** Losing it forces an uninstall to update.
 - **minSdk:** set to the owner's phone Android version: **36** (Pixel 10a on Android 16, decided 2026-10-09).
@@ -277,7 +279,7 @@ Stages are **vertical slices**: each stage adds the tables it needs via a new Al
 5. **Android MVP:** swipe cards against the API, Room cache, offline swipe queue synced while the app is in the foreground (single-swipe fallback on `422`, dead-letter store with retry on app update, debug screen with retry/export), feed-status screen.
 6. **Read-later view:** saved list, extracted-content reader, Custom Tabs fallback, permanent log of reads.
 7. **Ranking:** TF-IDF + logistic regression on the swipe log, queue ordering by predicted interest, exploration slice.
-8. **Iterate:** embeddings, per-feed retention tuning, undo, UX polish; lenient dead-letter upload if needed.
+8. **Iterate:** embeddings, per-feed retention tuning, undo, UX polish, the same article in several feeds (see Deduplication); lenient dead-letter upload if needed.
 9. **Off-server backups** (pinned 2026-10-06, layer 2, see Backups): destination to be decided after the owner checks Hetzner's options.
 
 ---
