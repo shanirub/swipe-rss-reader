@@ -5,13 +5,17 @@ import io.github.shanirub.swiperss.api.ApiClient
 import io.github.shanirub.swiperss.api.Swipe
 import io.github.shanirub.swiperss.api.apiJson
 import io.github.shanirub.swiperss.db.inMemoryDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.SerializationException
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 import retrofit2.HttpException
@@ -116,5 +120,27 @@ class SwipeRepositoryTest {
             assertEquals(offset, swipe.tzOffsetMinutes)
             db.outbox().delete(listOf(swipe.swipeId))
         }
+    }
+
+    @Test
+    fun refillAndSyncNeverOverlap() = runTest {
+        // A /queue answer built before the server got a swipe must not arrive after sync has
+        // removed that swipe from the outbox (the card would come back). So sync waits.
+        val fake = FakeServer()
+        server.dispatcher = fake
+        fake.queueAnswers.add(queueResponse(card("x"), delayMs = 300))
+        db.cards().addCards(listOf(card("a")))
+        val repository = repository()
+        repository.swipe(card("a"), Action.SAVE, null)
+
+        coroutineScope {
+            launch(Dispatchers.IO) { repository.refill() }
+            eventually("refill started") { fake.arrivals.isNotEmpty() }
+            launch(Dispatchers.IO) { repository.sync() }
+        }
+
+        val waitedMs = (fake.arrival("/swipes") - fake.arrival("/queue")) / 1_000_000
+        assertTrue("sync started ${waitedMs} ms after the refill", waitedMs >= 300)
+        assertEquals(listOf("x"), stackKeys())
     }
 }

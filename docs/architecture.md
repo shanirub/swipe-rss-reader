@@ -15,7 +15,7 @@ Contents:
 7. [`GET /queue`](#9-get-queue-sequence), [`POST /swipes`](#10-post-swipes-sequence) and the [read endpoints](#11-get-feeds-get-saved-and-saved-content-sequence)
 8. [Extraction job](#12-extraction-job-sequence) and the [SSRF guard](#13-ssrf-guard-connect-time-check-flowchart)
 9. Lifecycles: [an item](#14-item-lifecycle-state-diagram) and [a saved entry](#15-saved-entry-extraction-state-diagram)
-10. [Phone sync with dead letters](#16-phone-swipe-sync-sequence-planned) *(planned)*
+10. [Phone sync with dead letters](#16-phone-swipe-sync-sequence)
 11. [Mutation checks](#17-mutation-checks-scriptsmutantspy-flowchart) and the [development loop](#18-development-loop-flowchart)
 
 ---
@@ -581,37 +581,39 @@ stateDiagram-v2
     end note
 ```
 
-## 16. Phone swipe sync (sequence, planned)
+## 16. Phone swipe sync (sequence)
 
-How the Android app (stage 5) is designed to use `POST /swipes`, including the dead-letter fallback. Step 1 exists (the swipe screen stores swipes in the `outbox` table, since 2026-10-13); sending them is the next step. Sync runs only while the app is in the foreground (on app start/resume and a few seconds after the last swipe); there is no background job.
+How the Android app sends its swipes to `POST /swipes` (`swipe/SwipeSync.kt`, `SwipeRepository`, `SwipeViewModel`), including the dead-letter fallback. Sync runs only while the app is in the foreground: on return to the app (then the stack is refilled) and 5 seconds after the last swipe (also followed by a refill); there is no background job. One lock keeps sync and refill apart, so a `/queue` answer from before a sync can't bring back a card whose swipe was just sent.
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant ui as Swipe screen
-    participant room as Room queue (phone)
-    participant work as Sync (foreground coroutine)
+    participant room as Room outbox (phone)
+    participant sync as Sync (foreground coroutine)
     participant api as POST /swipes
 
     ui->>room: store swipe with a new UUID (works offline)
-    work->>room: read pending swipes
-    work->>api: batch of up to 500
+    Note over sync: on return to the app, or 5 s after the last swipe, holding the lock that refill also takes
+    sync->>room: read pending swipes (dead letters skipped)
+    sync->>api: up to 500, the stored JSON as it is
     alt 200
-        api-->>work: stored / duplicates
-        work->>room: delete sent swipes
-    else network error or timeout
-        work->>work: stop; resend at the next trigger (idempotent)
+        api-->>sync: stored / duplicates
+        sync->>room: delete sent swipes, then the next batch
+    else no connection, 5xx or 401
+        sync->>sync: stop, everything stays for the next trigger (resends are safe)
+        sync-->>ui: "N swipes not sent yet"
     else 422 (some swipe invalid)
         loop each swipe of the batch, one by one
-            work->>api: batch of 1
+            sync->>api: batch of 1
             alt 200
-                work->>room: delete it
+                sync->>room: delete it
             else 422
-                work->>room: move to dead letters (kept, with error and app_version)
+                sync->>room: mark as dead letter (server's error, app_version)
             end
         end
     end
-    Note over room: dead letters are retried once after an app update and can be retried or exported from a debug screen
+    Note over room,ui: dead letters: "N swipes couldn't be sent" with Retry, and one automatic retry after an app update
 ```
 
 ## 17. Mutation checks: `scripts/mutants.py` (flowchart)

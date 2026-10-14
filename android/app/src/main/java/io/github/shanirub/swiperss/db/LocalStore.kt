@@ -119,6 +119,17 @@ interface OutboxDao {
     @Query("SELECT * FROM outbox WHERE dead_error IS NOT NULL")
     suspend fun deadLetters(): List<OutboxRow>
 
+    // For the swipe screen: swipes still to send, and dead letters.
+    @Query("SELECT COUNT(*) FROM outbox WHERE dead_error IS NULL")
+    fun observePendingCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM outbox WHERE dead_error IS NOT NULL")
+    fun observeDeadCount(): Flow<Int>
+
+    // The screen's Retry button: every dead letter gets another try now.
+    @Query("UPDATE outbox SET dead_error = NULL, dead_app_version = NULL WHERE dead_error IS NOT NULL")
+    suspend fun reviveAllDeadLetters(): Int
+
     // On app start: dead letters from older versions get one more try. One that fails again is
     // marked with the current version, so it waits for the next release instead of looping.
     @Query("UPDATE outbox SET dead_error = NULL, dead_app_version = NULL WHERE dead_app_version < :appVersion")

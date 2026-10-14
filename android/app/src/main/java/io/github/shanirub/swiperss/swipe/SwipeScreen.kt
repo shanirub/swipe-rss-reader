@@ -22,6 +22,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -62,6 +63,19 @@ fun SwipeScreen(viewModel: SwipeViewModel, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize().padding(16.dp)) {
         state.problem?.let {
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
+        state.unsent?.let {
+            Text("$it ${swipes(it)} not sent yet", style = MaterialTheme.typography.bodySmall)
+        }
+        if (state.dead > 0) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${state.dead} ${swipes(state.dead)} couldn't be sent",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                TextButton(onClick = viewModel::retryDeadLetters) { Text("Retry") }
+            }
         }
         val cards = state.cards
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -214,6 +228,8 @@ private fun CardContent(
         }
     }
 }
+
+private fun swipes(n: Int) = if (n == 1) "swipe" else "swipes"
 
 private val dateFormat = DateTimeFormatter.ofPattern("d MMM, HH:mm")
 

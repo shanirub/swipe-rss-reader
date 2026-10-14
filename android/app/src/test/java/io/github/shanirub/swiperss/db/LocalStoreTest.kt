@@ -132,4 +132,26 @@ class LocalStoreTest {
         outbox.markDead("swipe-a", "422", appVersion = 4)  // failed again on version 4
         assertEquals(0, outbox.reviveDeadLettersOlderThan(4))
     }
+
+    @Test
+    fun theScreenSeesHowManySwipesArePendingAndDead() = runTest {
+        cards.addCards(listOf(card("a"), card("b"), card("c")))
+        listOf("a", "b", "c").forEach { outbox.recordSwipe(swipe(card(it))) }
+        outbox.markDead("swipe-b", "HTTP 422: bad", appVersion = 1)
+
+        assertEquals(2, outbox.observePendingCount().first())
+        assertEquals(1, outbox.observeDeadCount().first())
+    }
+
+    @Test
+    fun retryRevivesEveryDeadLetterWhateverItsVersion() = runTest {
+        listOf("a", "b", "c").forEach { outbox.recordSwipe(swipe(card(it))) }
+        outbox.markDead("swipe-a", "HTTP 422: bad", appVersion = 1)
+        outbox.markDead("swipe-b", "HTTP 422: bad", appVersion = 5)
+
+        assertEquals(2, outbox.reviveAllDeadLetters())
+
+        assertEquals(listOf("swipe-a", "swipe-b", "swipe-c"), outbox.pending(10).map { it.swipeId }.sorted())
+        assertTrue(outbox.pending(10).all { it.deadError == null && it.deadAppVersion == null })
+    }
 }

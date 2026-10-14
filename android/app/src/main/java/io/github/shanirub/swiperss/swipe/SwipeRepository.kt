@@ -6,6 +6,8 @@ import io.github.shanirub.swiperss.api.Swipe
 import io.github.shanirub.swiperss.api.SwipeRssApi
 import io.github.shanirub.swiperss.db.AppDatabase
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.Clock
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
@@ -13,7 +15,7 @@ import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 // The swipe screen's data: the card stack in Room, refilled from GET /queue, and swipes recorded
-// into the outbox (PROJECT_PLAN.md §3 Android). Sending the outbox is the sync step's job.
+// into the outbox and sent to POST /swipes (PROJECT_PLAN.md §3 Android).
 class SwipeRepository(
     private val api: SwipeRssApi,
     private val db: AppDatabase,
@@ -22,14 +24,31 @@ class SwipeRepository(
     private val newSwipeId: () -> String = { UUID.randomUUID().toString() },
 ) {
     val cards: Flow<List<Card>> = db.cards().observeCards()
+    val pendingCount: Flow<Int> = db.outbox().observePendingCount()
+    val deadCount: Flow<Int> = db.outbox().observeDeadCount()
+
+    private val sender = SwipeSync(api, db.outbox(), appVersion)
+
+    // Refill and sync never overlap. Otherwise a /queue answer the server built before it got a
+    // swipe could arrive after sync removed that swipe from the outbox, and the card would be
+    // added to the stack again.
+    private val network = Mutex()
 
     // Asks the server for cards only when the stack runs low. Throws on failure (IOException:
     // no connection; HttpException: an error status; SerializationException: an unreadable answer).
-    suspend fun refill() {
+    suspend fun refill() = network.withLock {
         if (db.cards().count() < REFILL_BELOW) {
             db.cards().addCards(api.queue(limit = QUEUE_LIMIT).items)
         }
     }
+
+    // Sends the pending swipes; throws like refill() when it has to stop (see SwipeSync).
+    suspend fun sync() = network.withLock { sender.sendPending() }
+
+    // Dead letters from older app versions get one more try (on the first sync after an update).
+    suspend fun reviveOlderDeadLetters() = db.outbox().reviveDeadLettersOlderThan(appVersion)
+
+    suspend fun reviveAllDeadLetters() = db.outbox().reviveAllDeadLetters()
 
     suspend fun swipe(card: Card, action: Action, timeToSwipeMs: Long?) {
         // One clock reading for both fields, so the time and the offset always belong together.

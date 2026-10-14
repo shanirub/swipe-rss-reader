@@ -31,12 +31,14 @@ Test files mirror the package of the code they test: `test/java/io/github/shanir
 | Spec conformance | Do the hand-written models match `api/openapi.yaml`? | `SpecConformanceTest.kt` |
 | Local database | Do the Room queries keep the stack and the outbox right? | `LocalStoreTest.kt` |
 | Swipe screen | Are refills, swipe fields, the card timer and the gesture rule right? | `SwipeRepositoryTest.kt`, `CardTimerTest.kt`, `SwipeGestureTest.kt`, `SwipeViewModelTest.kt` |
+| Swipe sync | Do swipes reach the server exactly once, and is nothing lost when sending fails? | `SwipeSyncTest.kt`, `SwipeRepositoryTest.kt`, `SwipeViewModelTest.kt` |
 | Mutants (by hand) | Can each test actually fail? | see [below](#mutation-testing) |
 
 - **Client behaviour.** Example: the interceptor stops adding the token → `queueSendsTokenAndLimitAndReadsNulls` fails.
 - **Spec conformance.** The backend generates its models from the spec; the app's models are written by hand (`PROJECT_PLAN.md` §3), so this test is what keeps them in sync. Example: the spec makes `FeedStatus.url` nullable while Kotlin keeps `String` → `feedListResponsesDecode` fails, before the phone crashes on a `null`.
 - **Local database.** Example: the swipe stops deleting its card in the same transaction → `aFailedSwipeLeavesTheCardOnTheStack` fails.
 - **Swipe screen.** Everything but the drawing and the animation, which are checked by hand on the phone. Example: the timer restarts whenever cards are added behind the top card → `theSameTopCardAgainKeepsItsTime` fails.
+- **Swipe sync.** Example: swipes deleted before the server answered → `failuresStopSendingAndKeepEverything` fails.
 
 ## Strategy
 
@@ -45,7 +47,8 @@ Test files mirror the package of the code they test: `test/java/io/github/shanir
 - **The spec is the oracle.** The conformance test validates JSON against the spec's schemas with a JSON Schema validator (networknt, test-only, never in the APK), with `format` checks (date-time, uuid) switched on. Which response fields may be null comes from the spec, not from the samples.
 - **A real SQLite, no phone.** Room tests run on an in-memory database with the bundled SQLite driver (test-only: its own SQLite for the desktop, since Android's isn't there); the app keeps Android's SQLite. Room's builder wants an Android `Context`; the tests set the two things it would use it for (journal mode, query thread), so an empty placeholder is enough. If a Room update starts using it, the tests fail loudly; the fallback then is Robolectric (`PROJECT_PLAN.md` §3).
 - **Fixed clocks.** Swipe times use a fixed wall clock and time zone (`java.time.Clock`), the card timer a fake monotonic clock, so every expected value is exact.
-- **A stand-in for the main thread.** A ViewModel runs its work on Android's main thread, which the JVM lacks; `SwipeViewModelTest` puts a coroutine test dispatcher in its place (`Dispatchers.setMain`). Room still works on real threads, so the test waits for the state it expects instead of for "done".
+- **A stand-in for the main thread.** A ViewModel runs its work on Android's main thread, which the JVM lacks; `SwipeViewModelTest` puts a coroutine test dispatcher in its place (`Dispatchers.setMain`). Its delays run on virtual time, so the 5-second wait before sending passes at once. Room and MockWebServer still work on real threads, so the test waits for the state it expects (`eventually`) instead of for "done". After each test the ViewModels are cleared and their coroutines awaited before the real main thread is restored; otherwise a late one resumes on it and a later test fails at random.
+- **A fake server that answers by path.** `FakeServer` (`TestCards.kt`) answers `/queue` and `/swipes` in the same test, records each swipe body and when each request arrived, and can serve `/queue` like the real server (only cards no accepted swipe was for).
 - **The validator is tested too.** `validatorRejectsInvalidSwipes` feeds it broken swipes; if it ever accepted everything (unresolved schema, formats off), the other conformance tests would pass for nothing.
 
 ## Mutation testing
@@ -84,6 +87,25 @@ By hand only: no maintained tool fits this setup (`PROJECT_PLAN.md` §3; mutflow
 | read now without a link; any link scheme; scheme case-sensitive | `noReadNowWithoutALink`; `onlyWebLinksCanBeRead` |
 | the ViewModel doesn't restart the timer on return, or never tells it the top card | `swipesCarryHowLongTheirCardWasShown` |
 | the error message isn't cleared; HTTP or network errors not caught | `aFailedRefillShowsWhyUntilOneSucceeds`, `noConnectionIsShownAsOffline` |
+| swipes deleted before the server answered | `failuresStopSendingAndKeepEverything` |
+| a `422` on a batch stops sending; the whole rejected batch dead-lettered | `aRejectedBatchIsSentOneByOneAndOnlyTheBadSwipeIsKept` |
+| any failure while sending one by one dead-letters | `aFailureWhileSendingOneByOneStopsWithoutDeadLetters` |
+| dead letter without the app version, or without the server's error | `aRejectedBatchIsSentOneByOneAndOnlyTheBadSwipeIsKept` |
+| batches above 500; only the first swipe of a batch sent | `aLargeOutboxGoesInBatchesOf500`; `pendingSwipesAreSentAsStoredAndThenDeleted` |
+| refill or sync outside the lock | `refillAndSyncNeverOverlap` |
+| return to the app refills before sending | `comingBackSendsSwipesBeforeAskingForCards` |
+| no sync after swiping; no refill after that sync | `swipesAreSentShortlyAfterSwiping`; `cardsAreAskedForAgainAfterSwipesAreSent` |
+| "not sent yet" shown without a failed sync | `unsentSwipesAreShownWhileSendingFails` |
+| older dead letters never revived; Retry doesn't revive; dead count not shown | `deadLettersFromAnOlderVersionGetOneMoreTry`; `deadLettersAreShownAndCanBeRetried` (both) |
+| pending count includes dead letters; Retry revives only older versions | `theScreenSeesHowManySwipesArePendingAndDead`; `retryRevivesEveryDeadLetterWhateverItsVersion` |
+
+Accepted survivors (the code edit each needs is unlikely, and the effect is harmless):
+
+| Mutant | Effect if it happened |
+|---|---|
+| the "sending failed" flag never cleared after a success | "N swipes not sent yet" would also show during the normal 5-second wait |
+| the 5-second wait not restarted by a new swipe | more, smaller requests |
+| a later swipe cancels a sync already on its way | a wasted request; resends are safe (`swipe_id`) |
 
 ## Test files
 
@@ -115,13 +137,23 @@ In `java/io/github/shanirub/swiperss/db/`:
 - Swiped cards, pending or dead letter, are not added again
 - `pending` skips dead letters and respects the limit; `delete` removes only the sent swipes
 - Dead letters are retried once per new app version
+- The screen sees how many swipes are pending and how many are dead letters
+- Retry revives every dead letter, whatever its version
 
-In `java/io/github/shanirub/swiperss/swipe/` (`TestCards.kt`: shared card and `/queue` response helpers):
+In `java/io/github/shanirub/swiperss/swipe/` (`TestCards.kt`: shared card and response helpers, `FakeServer`, `eventually`):
 
 **`SwipeRepositoryTest.kt`**: the screen's data layer against MockWebServer and the in-memory database.
 - Below 10 cards the stack is refilled from `/queue?limit=50`, known cards skipped; a full stack asks nothing
 - Refill failures (error status, unreadable answer) reach the caller and leave the stack unchanged
 - A swipe stores every field: local time with its offset, to the millisecond; offset east, west and on the half hour; seconds always written
+- Refill and sync never overlap: sync waits for a slow `/queue` answer, so a just-sent swipe's card can't come back
+
+**`SwipeSyncTest.kt`**: sending the outbox to `POST /swipes`.
+- Pending swipes go out byte for byte as stored, then leave the outbox; 501 swipes go as 500 + 1
+- No connection, 5xx or 401 stops sending and keeps everything
+- A rejected batch is resent one by one; only the swipe rejected alone stays, as a dead letter with the server's error and the app version
+- A failure while sending one by one stops without dead letters
+- Dead letters aren't sent; nothing pending sends nothing
 
 **`CardTimerTest.kt`**: `time_to_swipe_ms`.
 - Measured from when a card became the top card; the same top card again keeps its time; a new one starts again
@@ -135,3 +167,7 @@ In `java/io/github/shanirub/swiperss/swipe/` (`TestCards.kt`: shared card and `/
 **`SwipeViewModelTest.kt`**: the ViewModel's wiring.
 - A failed refill shows why (server error, offline with the Tailscale hint) until one succeeds
 - Swipes carry how long their card was shown, without the time spent outside the app
+- Swipes are sent shortly after swiping; returning to the app sends them before asking for cards
+- Cards are asked for again after a delayed sync, when the last refill found only cards whose swipes were still waiting
+- "Not sent yet" appears only while sending fails; dead letters are shown and Retry sends them
+- Dead letters from an older app version get one more try

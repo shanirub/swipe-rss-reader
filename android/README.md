@@ -2,7 +2,7 @@
 
 The swipe client for the backend's API (`../api/openapi.yaml`). Stage 5 in [`PROJECT_PLAN.md`](../PROJECT_PLAN.md); design and status in [`task_plan.md`](../task_plan.md).
 
-Current state: the swipe screen works. It loads cards from the server (`api/`: Retrofit + OkHttp + kotlinx.serialization, checked against `api/openapi.yaml`), keeps the stack and every swipe in a local database (`db/`: Room), and handles the gestures, the card timer and "read now" in Custom Tabs (`swipe/`). Swipes stay on the phone until the sync step is built. How the app is tested: [`app/src/test/README.md`](app/src/test/README.md). Libraries are added together with the code that first uses them.
+Current state: the swipe screen works. It loads cards from the server (`api/`: Retrofit + OkHttp + kotlinx.serialization, checked against `api/openapi.yaml`), keeps the stack and every swipe in a local database (`db/`: Room), handles the gestures, the card timer and "read now" in Custom Tabs, and sends the swipes to the server while the app is open: on return to the app and a few seconds after the last swipe, with rejected swipes kept as dead letters behind a Retry button (`swipe/`). How the app is tested: [`app/src/test/README.md`](app/src/test/README.md). Libraries are added together with the code that first uses them.
 
 ## Build
 
@@ -43,7 +43,7 @@ android/
         │                      MainActivity (the one screen), SwipeRssApp (database + client, once);
         │                      api/: API models, Retrofit interface, token interceptor, client;
         │                      db/: Room database (cards, outbox) and its queries;
-        │                      swipe/: swipe screen (repository, ViewModel, gesture rule, card timer, UI)
+        │                      swipe/: swipe screen (repository, sync, ViewModel, gesture rule, card timer, UI)
         ├── main/res/          resources: strings, launcher icon (still the default), base theme
         ├── main/keepRules/    rules for R8, the release-build shrinker (empty so far)
         └── test/              local JVM tests (JUnit): fast, no phone; no instrumented (on-device) tests
