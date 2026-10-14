@@ -53,7 +53,19 @@ Test files mirror the package of the code they test: `test/java/io/github/shanir
 
 ## Mutation testing
 
-By hand only: no maintained tool fits this setup (`PROJECT_PLAN.md` §3; mutflow is noted in §7 for later). After writing a guard test, break the code or the spec it protects on purpose, run the tests, expect a failure, and restore the file. Mutants checked so far:
+Curated, not generated: no maintained tool fits this setup (`PROJECT_PLAN.md` §3; mutflow is noted in §7 for later). After writing a guard test, break the code or the spec it protects on purpose, run the tests, expect a failure, and restore the file.
+
+The swipe-sync mutants are kept in `android/scripts/mutants.py` (the counterpart of `backend/scripts/mutants.py`), so they can be rerun after any change to the sync code or its tests:
+
+```sh
+python3 scripts/mutants.py           # from android/: all mutants, ~3 min
+python3 scripts/mutants.py refill    # only mutants whose name contains "refill"
+python3 scripts/mutants.py --list
+```
+
+Each mutant names the test that must fail. Verdicts: `KILLED` (that test failed), `KILLED-OTHER` (another one did), `SURVIVED`, `ACCEPTED` (a known harmless survivor, below), `STALE` (the snippet or the test name no longer exists), `ERROR` (usually a compile error). It runs locally, not in CI. The older mutants in the table were run by hand; they move into the script when their code changes.
+
+Mutants checked so far:
 
 | Mutant | Caught by |
 |---|---|
@@ -99,7 +111,7 @@ By hand only: no maintained tool fits this setup (`PROJECT_PLAN.md` §3; mutflow
 | older dead letters never revived; Retry doesn't revive; dead count not shown | `deadLettersFromAnOlderVersionGetOneMoreTry`; `deadLettersAreShownAndCanBeRetried` (both) |
 | pending count includes dead letters; Retry revives only older versions | `theScreenSeesHowManySwipesArePendingAndDead`; `retryRevivesEveryDeadLetterWhateverItsVersion` |
 
-Accepted survivors (the code edit each needs is unlikely, and the effect is harmless):
+Accepted survivors (the code edit each needs is unlikely, and the effect is harmless; marked `accepted` in the script):
 
 | Mutant | Effect if it happened |
 |---|---|

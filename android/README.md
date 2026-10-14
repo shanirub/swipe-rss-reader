@@ -27,6 +27,7 @@ android/
 ├── build.gradle.kts           plugins shared by modules (declared, applied in app/)
 ├── gradle.properties          Gradle's own settings (daemon memory, configuration cache)
 ├── secrets.properties.example template for secrets.properties (API token, server address; git-ignored)
+├── scripts/mutants.py         curated mutation checks for the JVM tests (see app/src/test/README.md)
 ├── gradlew, gradle/wrapper/   Gradle wrapper: pins the Gradle version (9.8.1)
 ├── gradle/
 │   ├── libs.versions.toml     version catalog: every dependency version in one place
